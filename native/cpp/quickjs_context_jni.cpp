@@ -339,3 +339,10 @@ Java_com_whl_quickjs_wrapper_QuickJSContext_executePendingJob(JNIEnv *env, jclas
     }
     return err;
 }
+
+extern "C" JNIEXPORT jboolean JNICALL
+Java_com_whl_quickjs_wrapper_QuickJSContext_isJobPending(JNIEnv *env, jclass clazz, jlong runtime)
+{
+    auto *rt = reinterpret_cast<JSRuntime *>(runtime);
+    return JS_IsJobPending(rt) ? JNI_TRUE : JNI_FALSE;
+}

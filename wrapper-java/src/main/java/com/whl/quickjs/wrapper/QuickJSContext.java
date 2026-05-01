@@ -136,6 +136,18 @@ public class QuickJSContext implements Closeable {
         return QuickJSContext.executePendingJob(runtime);
     }
 
+    /**
+     * Check whether there are pending microtasks (Promise callbacks, etc.)
+     * waiting to be executed, without actually running them.
+     *
+     * @return true if at least one job is pending
+     */
+    public boolean isJobPending() {
+        checkSameThread();
+        checkDestroyed();
+        return QuickJSContext.isJobPending(runtime);
+    }
+
     public void setMemoryLimit(int memoryLimitSize) {
         setMemoryLimit(runtime, memoryLimitSize);
     }
@@ -616,6 +628,7 @@ public class QuickJSContext implements Closeable {
     private native long getMemoryUsedSize(long runtime);
     private native void setGCThreshold(long runtime, int size);
     private static native int executePendingJob(long runtime);
+    private static native boolean isJobPending(long runtime);
 
     // context
     private native long createContext(long runtime);
