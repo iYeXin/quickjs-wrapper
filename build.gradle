@@ -26,10 +26,15 @@ subprojects {
 
     group = "com.github.iYeXin"
 
-    mavenPublishing {
-        publishToMavenCentral(true)
+    boolean hasSigningKey = project.hasProperty('signingInMemoryKey') &&
+        project.property('signingInMemoryKey')?.toString()?.trim()?.length() > 0
 
-        signAllPublications()
+    mavenPublishing {
+        publishToMavenCentral(hasSigningKey)
+
+        if (hasSigningKey) {
+            signAllPublications()
+        }
 
         pom {
             name = "QuickJS Wrapper"
