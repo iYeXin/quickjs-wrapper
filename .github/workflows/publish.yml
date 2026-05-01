@@ -95,6 +95,8 @@ jobs:
     needs: [build-native]
     if: always()
     runs-on: ubuntu-24.04
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
         with:
@@ -112,9 +114,16 @@ jobs:
           pattern: native-*
           path: native-dist
 
-      - name: Display native artifacts
+      - uses: gradle/gradle-build-action@v2
+
+      - name: Build JARs
+        run: ./gradlew :wrapper-java:assemble
+
+      - name: Collect release artifacts
         run: |
-          find native-dist -type f -ls
+          mkdir -p release-artifacts/native
+          cp -r native-dist/native-*/* release-artifacts/native/ 2>/dev/null || true
+          cp wrapper-java/build/libs/*.jar release-artifacts/
 
       - name: Get release notes
         run: |
@@ -123,14 +132,13 @@ jobs:
           echo "$(awk "/^## $VERSION/{flag=1;next}/^## /{flag=0}flag" CHANGELOG.md)" >> $GITHUB_ENV
           echo "EOF" >> $GITHUB_ENV
 
-      - name: Create Release with native binaries
+      - name: Create Release
         if: ${{ env.RELEASE_NOTES != '' }}
         uses: softprops/action-gh-release@v2
         with:
           token: ${{ github.token }}
           body: ${{ env.RELEASE_NOTES }}
           files: |
-            native-dist/native-linux-x86_64/*
-            native-dist/native-macos-x86_64/*
-            native-dist/native-macos-arm64/*
-            native-dist/native-windows-x86_64/*
+            release-artifacts/native/*
+            release-artifacts/*.jar
+          fail_on_unmatched_files: false

@@ -59,11 +59,11 @@ cmake --build build/cmake -j $(nproc)
 
 ### Output
 
-| Platform | File |
-|---|---|
-| Linux | `build/cmake/libquickjs-java-wrapper.so` |
-| macOS | `build/cmake/libquickjs-java-wrapper.dylib` |
-| Windows | `build/cmake/libquickjs-java-wrapper.dll` |
+| Platform | File                                        |
+| -------- | ------------------------------------------- |
+| Linux    | `build/cmake/libquickjs-java-wrapper.so`    |
+| macOS    | `build/cmake/libquickjs-java-wrapper.dylib` |
+| Windows  | `build/cmake/libquickjs-java-wrapper.dll`   |
 
 ### Gradle Build (Java JAR)
 
@@ -74,13 +74,13 @@ cd ../..  # back to project root
 
 Output JARs in `wrapper-java/build/libs/`:
 
-| JAR | Contents |
-|---|---|
-| `quickjs-java-wrapper.jar` | All 4 platforms (~1.4 MB) |
-| `quickjs-java-wrapper-linux-x86_64.jar` | Linux only (~370 KB) |
-| `quickjs-java-wrapper-macos-x86_64.jar` | macOS Intel only (~380 KB) |
-| `quickjs-java-wrapper-macos-arm64.jar` | macOS Apple Silicon only (~370 KB) |
-| `quickjs-java-wrapper-windows-x86_64.jar` | Windows only (~390 KB) |
+| JAR                                       | Contents                           |
+| ----------------------------------------- | ---------------------------------- |
+| `quickjs-java-wrapper.jar`                | All 4 platforms (~1.4 MB)          |
+| `quickjs-java-wrapper-linux-x86_64.jar`   | Linux only (~370 KB)               |
+| `quickjs-java-wrapper-macos-x86_64.jar`   | macOS Intel only (~380 KB)         |
+| `quickjs-java-wrapper-macos-arm64.jar`    | macOS Apple Silicon only (~370 KB) |
+| `quickjs-java-wrapper-windows-x86_64.jar` | Windows only (~390 KB)             |
 
 ## Platform Detection
 
