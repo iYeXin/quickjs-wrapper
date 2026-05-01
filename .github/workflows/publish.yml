@@ -77,10 +77,17 @@ jobs:
           cmake -DCMAKE_BUILD_TYPE=MinSizeRel \
                 -DCMAKE_C_COMPILER=gcc \
                 -DCMAKE_CXX_COMPILER=g++ \
-                -DCMAKE_C_FLAGS="-Os -flto -ffunction-sections -fdata-sections" \
-                -DCMAKE_CXX_FLAGS="-Os -flto -ffunction-sections -fdata-sections" \
+                -DCMAKE_C_FLAGS="-Os -ffunction-sections -fdata-sections" \
+                -DCMAKE_CXX_FLAGS="-Os -ffunction-sections -fdata-sections -static-libgcc -static-libstdc++" \
+                -DCMAKE_SHARED_LINKER_FLAGS="-static-libgcc -static-libstdc++ -Wl,--gc-sections -Wl,-Bstatic -l:libwinpthread.a -Wl,-Bdynamic" \
                 -G "MinGW Makefiles" -S src/main -B build
           cmake --build build -j $(nproc)
+
+      - name: Bundle Windows deps
+        if: matrix.os == 'windows-2025'
+        run: |
+          cp /mingw64/bin/libwinpthread-1.dll wrapper-java/build/
+          cp /mingw64/bin/libwinpthread-1.dll src/main/resources/native/windows-x86_64/
 
       - name: Strip (Windows)
         if: matrix.os == 'windows-2025'
@@ -89,7 +96,9 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact }}
-          path: wrapper-java/build/${{ matrix.lib_name }}
+          path: |
+            wrapper-java/build/${{ matrix.lib_name }}
+            wrapper-java/build/libwinpthread-1.dll
 
   publish:
     needs: [build-native]
