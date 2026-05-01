@@ -1,6 +1,6 @@
 # Change Log
 
-## 3.3.0 *(2026-05-01)*
+## 3.3.3 *(2026-05-01)*
 
 ### Breaking Changes
 - **QuickJS 2025-09-13** — upgraded from 2024-02-14 to latest upstream. Enables `FinalizationRegistry`, `WeakRef`, symbols as weakrefs, new BigInt implementation, ES2023
