@@ -31,8 +31,15 @@ final class QuickJSNativeLoader {
             String libPath = "native/" + platform + "/" + mapLibName(platform);
             try (InputStream is = QuickJSNativeLoader.class.getClassLoader().getResourceAsStream(libPath)) {
                 if (is != null) {
-                    Path tempFile = Files.createTempFile("quickjs-java-wrapper-", libExt(platform));
-                    tempFile.toFile().deleteOnExit();
+                    Path tempDir = Files.createTempDirectory("quickjs-java-wrapper-");
+                    tempDir.toFile().deleteOnExit();
+
+                    if (platform.startsWith("windows")) {
+                        String depPath = "native/" + platform + "/libwinpthread-1.dll";
+                        extractResource(tempDir, depPath);
+                    }
+
+                    Path tempFile = tempDir.resolve(mapLibName(platform));
                     Files.copy(is, tempFile, StandardCopyOption.REPLACE_EXISTING);
                     System.load(tempFile.toAbsolutePath().toString());
                     loaded = true;
@@ -46,6 +53,16 @@ final class QuickJSNativeLoader {
             "Failed to load native library '" + mapLibName(detectPlatform()) + "'. " +
             "Make sure the native library is on java.library.path or bundled in the JAR."
         );
+    }
+
+    private static void extractResource(Path targetDir, String resourcePath) {
+        try (InputStream is = QuickJSNativeLoader.class.getClassLoader().getResourceAsStream(resourcePath)) {
+            if (is != null) {
+                String name = resourcePath.substring(resourcePath.lastIndexOf('/') + 1);
+                Files.copy(is, targetDir.resolve(name), StandardCopyOption.REPLACE_EXISTING);
+            }
+        } catch (IOException ignored) {
+        }
     }
 
     private static String detectPlatform() {

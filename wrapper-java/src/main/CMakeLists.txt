@@ -20,7 +20,3 @@ include_directories($ENV{JAVA_HOME}/include/)
 include_directories($ENV{JAVA_HOME}/include/darwin)
 include_directories($ENV{JAVA_HOME}/include/linux)
 include_directories($ENV{JAVA_HOME}/include/win32)
-
-if(WIN32)
-    include_directories(${CMAKE_CURRENT_SOURCE_DIR}/../../../native/win32_compat)
-endif()

@@ -24,6 +24,9 @@ jobs:
             artifact: native-windows-x86_64
             lib_name: libquickjs-java-wrapper.dll
     runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: ${{ matrix.os == 'windows-2025' && 'msys2 {0}' || 'bash' }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -34,9 +37,17 @@ jobs:
           distribution: 'temurin'
           java-version: 21
 
-      - name: Setup MSVC (Windows)
+      - name: Setup MSYS2 (Windows)
         if: matrix.os == 'windows-2025'
-        uses: ilammy/msvc-dev-cmd@v1
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: mingw64
+          update: true
+          install: >-
+            mingw-w64-x86_64-gcc
+            mingw-w64-x86_64-cmake
+            mingw-w64-x86_64-ninja
+            mingw-w64-x86_64-make
 
       - name: Build (Linux)
         if: matrix.os == 'ubuntu-24.04'
@@ -61,12 +72,33 @@ jobs:
 
       - name: Build (Windows)
         if: matrix.os == 'windows-2025'
-        run: cd wrapper-java && cmake -DCMAKE_BUILD_TYPE=MinSizeRel -DCMAKE_C_COMPILER=clang-cl -DCMAKE_CXX_COMPILER=clang-cl -DCMAKE_C_FLAGS="/MT /O1 /GS-" -DCMAKE_CXX_FLAGS="/MT /O1 /GS-" -G Ninja -S src/main -B build && cmake --build build -j $env:NUMBER_OF_PROCESSORS
+        run: |
+          cd wrapper-java
+          cmake -DCMAKE_BUILD_TYPE=MinSizeRel \
+                -DCMAKE_C_COMPILER=gcc \
+                -DCMAKE_CXX_COMPILER=g++ \
+                -DCMAKE_C_FLAGS="-Os -ffunction-sections -fdata-sections" \
+                -DCMAKE_CXX_FLAGS="-Os -ffunction-sections -fdata-sections" \
+                -G "MinGW Makefiles" -S src/main -B build
+          cmake --build build -j $(nproc)
+
+      - name: Bundle Windows runtime dep
+        if: matrix.os == 'windows-2025'
+        run: |
+          cp /mingw64/bin/libwinpthread-1.dll wrapper-java/build/
+          mkdir -p src/main/resources/native/windows-x86_64
+          cp /mingw64/bin/libwinpthread-1.dll src/main/resources/native/windows-x86_64/
+
+      - name: Strip (Windows)
+        if: matrix.os == 'windows-2025'
+        run: strip --strip-all wrapper-java/build/${{ matrix.lib_name }}
 
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact }}
-          path: wrapper-java/build/${{ matrix.lib_name }}
+          path: |
+            wrapper-java/build/${{ matrix.lib_name }}
+            wrapper-java/build/libwinpthread-1.dll
 
   publish:
     needs: [build-native]
