@@ -114,6 +114,8 @@ jobs:
         run: |
           cd wrapper-java
           cmake -DCMAKE_BUILD_TYPE=MinSizeRel `
+                -DCMAKE_C_COMPILER=clang-cl `
+                -DCMAKE_CXX_COMPILER=clang-cl `
                 -DCMAKE_C_FLAGS="/MT /O1 /GS-" `
                 -DCMAKE_CXX_FLAGS="/MT /O1 /GS-" `
                 -G Ninja -S src/main -B build
