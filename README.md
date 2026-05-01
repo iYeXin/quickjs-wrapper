@@ -44,7 +44,7 @@ ctx.destroy();
     <dependency>
         <groupId>com.github.iYeXin</groupId>
         <artifactId>quickjs-java-wrapper</artifactId>
-        <version>v3.3.0</version>
+        <version>v3.4.0</version>
     </dependency>
 </dependencies>
 ```
@@ -104,6 +104,13 @@ ctx.setConsole(new QuickJSContext.Console() {
 
 ctx.evaluate("console.log('Hello from JS!');");
 
+// Promise microtask pump (for custom event loops)
+int count = ctx.executePendingJob();  // 1 if a job ran, 0 if idle, -1 on error
+
+// Direct JS function call by pointer
+JSValue global = ctx.getGlobalObject();
+Object ret = ctx.call(function, 0, 0, new Object[]{"arg1", 42});
+
 // Manual memory management
 JSFunction func = obj.getJSFunction("someMethod");
 func.call(args);
@@ -132,8 +139,8 @@ cd quickjs-wrapper
 ```bash
 cd wrapper-java
 cmake -DCMAKE_BUILD_TYPE=MinSizeRel \
-      -DCMAKE_C_FLAGS="-Os -flto" \
-      -DCMAKE_CXX_FLAGS="-Os -flto" \
+      -DCMAKE_C_FLAGS="-O2 -flto" \
+      -DCMAKE_CXX_FLAGS="-O2 -flto" \
       -G Ninja -S src/main -B build/cmake
 cmake --build build/cmake -j $(nproc)
 ```
@@ -145,8 +152,9 @@ pacman -S mingw-w64-x86_64-gcc mingw-w64-x86_64-cmake mingw-w64-x86_64-ninja
 cd wrapper-java
 cmake -DCMAKE_BUILD_TYPE=MinSizeRel \
       -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++ \
-      -DCMAKE_C_FLAGS="-Os -flto" \
-      -DCMAKE_CXX_FLAGS="-Os -flto" \
+      -DCMAKE_C_FLAGS="-O2 -ffunction-sections -fdata-sections" \
+      -DCMAKE_CXX_FLAGS="-O2 -ffunction-sections -fdata-sections" \
+      -DCMAKE_SHARED_LINKER_FLAGS="-static-libgcc -static-libstdc++ -Wl,--gc-sections -Wl,-Bstatic -l:libwinpthread.a -Wl,-Bdynamic" \
       -G "MinGW Makefiles" -S src/main -B build/cmake
 cmake --build build/cmake -j $(nproc)
 ```
@@ -155,14 +163,17 @@ Output: `wrapper-java/build/cmake/libquickjs-java-wrapper.{so,dylib,dll}`
 
 ## Changes from Upstream
 
-| Change                  | Reason                                                       |
-| ----------------------- | ------------------------------------------------------------ |
-| QuickJS → 2025-09-13    | ES2023, `FinalizationRegistry`, `WeakRef`, new BigInt        |
-| Removed `CONFIG_BIGNUM` | Bignum extension removed in QuickJS 2025-04-26               |
-| Added `dtoa.c/h`        | Replaces removed `libbf`                                     |
-| Auto-native loading     | `QuickJSNativeLoader` detects platform, extracts from JAR    |
-| Platform-specific JARs  | Smaller deployment, ~370 KB vs 1.4 MB                        |
-| Cross-platform CI       | GitHub Actions builds Linux/macOS x86_64/macOS ARM64/Windows |
+| Change                   | Reason                                                       |
+| ------------------------ | ------------------------------------------------------------ |
+| QuickJS → 2025-09-13     | ES2023, `FinalizationRegistry`, `WeakRef`, new BigInt        |
+| Removed `CONFIG_BIGNUM`  | Bignum extension removed in QuickJS 2025-04-26               |
+| Added `dtoa.c/h`         | Replaces removed `libbf`                                     |
+| Auto-native loading      | `QuickJSNativeLoader` detects platform, extracts from JAR    |
+| `executePendingJob()`    | Public API to pump Promise microtask queue from Java         |
+| `QuickJSContext.call()`  | Public method — call any JS function directly by pointer     |
+| Windows runtime bundling | `libwinpthread-1.dll` auto-extracted, no MinGW at runtime    |
+| Platform-specific JARs   | Smaller deployment, ~370 KB vs 1.4 MB                        |
+| Cross-platform CI        | GitHub Actions builds Linux/macOS x86_64/macOS ARM64/Windows |
 
 ## License
 

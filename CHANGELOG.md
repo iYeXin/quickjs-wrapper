@@ -9,13 +9,17 @@
 - Group ID changed: `wang.harlon.quickjs` → `com.github.iYeXin`
 
 ### New Features
+- **`executePendingJob()`** — public API to pump Promise microtask queue from Java event loop. Returns positive count of jobs executed, 0 if idle, throws QuickJSException on error
+- **`QuickJSContext.call()`** is now `public` — call any JS function by pointer from Java, enabling custom event loop integration
+- **Windows runtime bundling** — `libwinpthread-1.dll` automatically extracted alongside main DLL at load time, no external MinGW runtime needed
 - **Cross-platform native builds** — prebuilt native libraries for Linux/macOS x86_64/macOS ARM64/Windows via GitHub Actions CI
 - **Platform-specific JARs** — smaller deployment (~370 KB) with only the native lib for the target platform
 - **Auto-native loading** — `QuickJSNativeLoader` detects platform and extracts native library from JAR automatically
-    
+
 ### Infrastructure
-- Cross-platform CI (GitHub Actions matrix: ubuntu-24.04, macos-14, macos-15, windows-2025 + MSYS2)
-- GitHub Releases automatically attach native binaries (.so, .dylib, .dll)
+- Windows CI switched to MinGW with static pthread linking (`-Wl,-Bstatic -l:libwinpthread.a`)
+- macOS and Linux CI build with `-O2` (replaced `-Os` for stability on GCC 15)
+- GitHub Releases automatically attach native binaries (.so, .dylib, .dll) and Windows runtime dependency
 - Cleaned up repository: removed `app/`, `wrapper-android/`, `images/`, `remarks.md`
 
 ---
