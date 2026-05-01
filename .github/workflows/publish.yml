@@ -129,8 +129,6 @@ jobs:
       - uses: gradle/gradle-build-action@v2
 
       - name: Publish to Maven Central
-        if: ${{ secrets.SONATYPE_NEXUS_USERNAME != '' }}
-        continue-on-error: true
         run: ./gradlew publish
         env:
           ORG_GRADLE_PROJECT_mavenCentralUsername: ${{ secrets.SONATYPE_NEXUS_USERNAME }}
@@ -139,7 +137,7 @@ jobs:
           ORG_GRADLE_PROJECT_signingInMemoryKeyPassword: ${{ secrets.SIGNING_PASSWORD }}
 
       - name: Create Release with native binaries
-        if: always()
+        if: ${{ env.RELEASE_NOTES != '' }}
         uses: softprops/action-gh-release@v2
         with:
           token: ${{ github.token }}
@@ -149,4 +147,3 @@ jobs:
             native-dist/native-macos-x86_64/*
             native-dist/native-macos-arm64/*
             native-dist/native-windows-x86_64/*
-        if: ${{ env.RELEASE_NOTES != '' }}
