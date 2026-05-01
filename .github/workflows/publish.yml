@@ -92,7 +92,8 @@ jobs:
           path: wrapper-java/build/${{ matrix.lib_name }}
 
   publish:
-    needs: build-native
+    needs: [build-native]
+    if: always()
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
@@ -106,6 +107,7 @@ jobs:
 
       - name: Download native artifacts
         uses: actions/download-artifact@v4
+        continue-on-error: true
         with:
           pattern: native-*
           path: native-dist
