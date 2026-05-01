@@ -6,21 +6,103 @@ on:
       - '**'
 
 jobs:
-  publish:
-
-    runs-on: ubuntu-latest
-
+  build-native:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            artifact: native-linux-x86_64
+            lib_name: libquickjs-java-wrapper.so
+          - os: macos-14
+            artifact: native-macos-x86_64
+            lib_name: libquickjs-java-wrapper.dylib
+          - os: macos-15
+            artifact: native-macos-arm64
+            lib_name: libquickjs-java-wrapper.dylib
+          - os: windows-2025
+            artifact: native-windows-x86_64
+            lib_name: libquickjs-java-wrapper.dll
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: ${{ matrix.os == 'windows-2025' && 'msys2 {0}' || 'bash' }}
     steps:
-      - name: Checkout
-        uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
           submodules: recursive
 
-      - name: Install JDK
-        uses: actions/setup-java@v3
+      - uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
-          java-version: 17
+          java-version: 21
+
+      - name: Setup MSYS2 (Windows)
+        if: matrix.os == 'windows-2025'
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: mingw64
+          update: true
+          install: >-
+            mingw-w64-x86_64-gcc
+            mingw-w64-x86_64-cmake
+            mingw-w64-x86_64-ninja
+            mingw-w64-x86_64-make
+
+      - name: Build (Unix)
+        if: matrix.os != 'windows-2025'
+        run: |
+          cd wrapper-java
+          cmake -DCMAKE_BUILD_TYPE=MinSizeRel \
+                -DCMAKE_C_FLAGS="-Os -flto -ffunction-sections -fdata-sections" \
+                -DCMAKE_CXX_FLAGS="-Os -flto -ffunction-sections -fdata-sections" \
+                -DCMAKE_SHARED_LINKER_FLAGS="-Wl,--gc-sections -Wl,--strip-all" \
+                -G Ninja -S src/main -B build
+          cmake --build build -j $(nproc || sysctl -n hw.logicalcpu)
+
+      - name: Build (Windows)
+        if: matrix.os == 'windows-2025'
+        run: |
+          cd wrapper-java
+          cmake -DCMAKE_BUILD_TYPE=MinSizeRel \
+                -DCMAKE_C_COMPILER=gcc \
+                -DCMAKE_CXX_COMPILER=g++ \
+                -DCMAKE_C_FLAGS="-Os -flto -ffunction-sections -fdata-sections" \
+                -DCMAKE_CXX_FLAGS="-Os -flto -ffunction-sections -fdata-sections" \
+                -G "MinGW Makefiles" -S src/main -B build
+          cmake --build build -j $(nproc)
+
+      - name: Strip (Windows)
+        if: matrix.os == 'windows-2025'
+        run: strip --strip-all wrapper-java/build/${{ matrix.lib_name }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: wrapper-java/build/${{ matrix.lib_name }}
+
+  publish:
+    needs: build-native
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: 21
+
+      - name: Download native artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: native-*
+          path: native-dist
+
+      - name: Display native artifacts
+        run: |
+          find native-dist -type f -ls
 
       - name: Get release notes
         run: |
@@ -34,7 +116,7 @@ jobs:
 
       - uses: gradle/gradle-build-action@v2
 
-      - name: Publish
+      - name: Publish to Maven Central
         run: ./gradlew publish
         env:
           ORG_GRADLE_PROJECT_mavenCentralUsername: ${{ secrets.SONATYPE_NEXUS_USERNAME }}
@@ -42,9 +124,14 @@ jobs:
           ORG_GRADLE_PROJECT_signingInMemoryKey: ${{ secrets.SIGNING_PRIVATE_KEY }}
           ORG_GRADLE_PROJECT_signingInMemoryKeyPassword: ${{ secrets.SIGNING_PASSWORD }}
 
-      - name: Create Release
-        uses: softprops/action-gh-release@v1
+      - name: Create Release with native binaries
+        uses: softprops/action-gh-release@v2
         with:
           token: ${{ github.token }}
           body: ${{ env.RELEASE_NOTES }}
+          files: |
+            native-dist/native-linux-x86_64/*
+            native-dist/native-macos-x86_64/*
+            native-dist/native-macos-arm64/*
+            native-dist/native-windows-x86_64/*
         if: ${{ env.RELEASE_NOTES != '' }}

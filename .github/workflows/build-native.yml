@@ -1,0 +1,142 @@
+name: Build Native Libraries
+
+on:
+  push:
+    branches: [main, master]
+    paths:
+      - 'native/**'
+      - 'wrapper-java/src/main/CMakeLists.txt'
+      - 'CMakeLists.txt'
+      - '.github/workflows/build-native.yml'
+  pull_request:
+    paths:
+      - 'native/**'
+      - 'wrapper-java/src/main/CMakeLists.txt'
+      - 'CMakeLists.txt'
+      - '.github/workflows/build-native.yml'
+  workflow_dispatch:
+
+jobs:
+  build-linux:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: 21
+
+      - name: Build
+        run: |
+          cd wrapper-java
+          cmake -DCMAKE_BUILD_TYPE=MinSizeRel \
+                -DCMAKE_C_FLAGS="-Os -flto -ffunction-sections -fdata-sections" \
+                -DCMAKE_CXX_FLAGS="-Os -flto -ffunction-sections -fdata-sections" \
+                -DCMAKE_SHARED_LINKER_FLAGS="-Wl,--gc-sections -Wl,--strip-all" \
+                -G Ninja -S src/main -B build
+          cmake --build build -j $(nproc)
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: native-linux-x86_64
+          path: wrapper-java/build/libquickjs-java-wrapper.so
+
+  build-macos-x86_64:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: 21
+
+      - name: Build
+        run: |
+          cd wrapper-java
+          cmake -DCMAKE_BUILD_TYPE=MinSizeRel \
+                -DCMAKE_C_FLAGS="-Os -flto" \
+                -DCMAKE_CXX_FLAGS="-Os -flto" \
+                -G Ninja -S src/main -B build
+          cmake --build build -j $(sysctl -n hw.logicalcpu)
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: native-macos-x86_64
+          path: wrapper-java/build/libquickjs-java-wrapper.dylib
+
+  build-macos-arm64:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: 21
+
+      - name: Build
+        run: |
+          cd wrapper-java
+          cmake -DCMAKE_BUILD_TYPE=MinSizeRel \
+                -DCMAKE_C_FLAGS="-Os -flto" \
+                -DCMAKE_CXX_FLAGS="-Os -flto" \
+                -G Ninja -S src/main -B build
+          cmake --build build -j $(sysctl -n hw.logicalcpu)
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: native-macos-arm64
+          path: wrapper-java/build/libquickjs-java-wrapper.dylib
+
+  build-windows:
+    runs-on: windows-2025
+    defaults:
+      run:
+        shell: msys2 {0}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: 21
+
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: mingw64
+          update: true
+          install: >-
+            mingw-w64-x86_64-gcc
+            mingw-w64-x86_64-cmake
+            mingw-w64-x86_64-ninja
+            mingw-w64-x86_64-make
+
+      - name: Build
+        run: |
+          cd wrapper-java
+          cmake -DCMAKE_BUILD_TYPE=MinSizeRel \
+                -DCMAKE_C_COMPILER=gcc \
+                -DCMAKE_CXX_COMPILER=g++ \
+                -DCMAKE_C_FLAGS="-Os -flto -ffunction-sections -fdata-sections" \
+                -DCMAKE_CXX_FLAGS="-Os -flto -ffunction-sections -fdata-sections" \
+                -G "MinGW Makefiles" -S src/main -B build
+          cmake --build build -j $(nproc)
+
+      - name: Strip
+        run: |
+          strip --strip-all wrapper-java/build/libquickjs-java-wrapper.dll
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: native-windows-x86_64
+          path: wrapper-java/build/libquickjs-java-wrapper.dll
