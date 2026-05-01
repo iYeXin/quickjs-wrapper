@@ -1,65 +1,101 @@
-# 构建
-## 环境要求:
-+ JDK & JAVA_HOME 环境变量
-+ 安装好 cmake ninja
+# QuickJS Wrapper — Java
 
-### cmake 安装方式 mac
-```
-brew install cmake
-```
+JVM bindings for QuickJS 2025-09-13.
 
-### ninja 安装方式 mac
-```
-brew install ninja
-```
+## Building
 
-### cmake 安装方式 linux
-卸载系统自带的版本(太老)
+### Prerequisites
 
-```
-apt remove cmake
+- JDK 21+ (`JAVA_HOME` must be set and point to a JDK with `include/` headers)
+- CMake 3.23+
+- Build tool: Ninja or Make
 
-```
+### Linux
 
-```
-wget  https://github.com/Kitware/CMake/releases/download/v3.24.0-rc5/cmake-3.24.0-rc5.tar.gz
-```
-
-```
-tar -xvf cmake-3.24.0-rc5.tar.gz
-```
-
-```
-cd make-3.24.0-rc5
-```
-
-```
-./configure && make && make install
-```
-
-### ninja 安装方式 linux
-```
-apt install ninja-build
-```
-
-## 构建动态链接库
-打开 `terminal` 窗口，执行以下命令：
-```shell
-// 进入 wrapper-java 目录
+```bash
+sudo apt install cmake ninja-build
 cd wrapper-java
 
-// step 1
-cmake -DCMAKE_BUILD_TYPE=Debug -DCMAKE_MAKE_PROGRAM=ninja -G Ninja -S ./src/main -B ./build/cmake
+cmake -DCMAKE_BUILD_TYPE=MinSizeRel \
+      -DCMAKE_C_FLAGS="-Os -flto -ffunction-sections -fdata-sections" \
+      -DCMAKE_CXX_FLAGS="-Os -flto -ffunction-sections -fdata-sections" \
+      -DCMAKE_SHARED_LINKER_FLAGS="-Wl,--gc-sections -Wl,--strip-all" \
+      -G Ninja -S src/main -B build/cmake
 
-// step 2
-cmake --build ./build/cmake --target quickjs-java-wrapper -j 6
+cmake --build build/cmake -j $(nproc)
 ```
 
-## 产物
-so 链库地址:
-```shell
-    wrapper-java/build/cmake/libquickjs-java-wrapper.dylib
+### macOS
+
+```bash
+brew install cmake ninja
+cd wrapper-java
+
+cmake -DCMAKE_BUILD_TYPE=MinSizeRel \
+      -DCMAKE_C_FLAGS="-Os -flto" \
+      -DCMAKE_CXX_FLAGS="-Os -flto" \
+      -G Ninja -S src/main -B build/cmake
+
+cmake --build build/cmake -j $(sysctl -n hw.logicalcpu)
 ```
 
-## TODO
-- [ ] 跨平台编译方式(在单一平台编译出其他平台产物)
+### Windows (MSYS2 MinGW)
+
+```bash
+# Install MSYS2 from https://www.msys2.org/
+pacman -S mingw-w64-x86_64-gcc mingw-w64-x86_64-cmake mingw-w64-x86_64-ninja mingw-w64-x86_64-make
+
+# Open "MSYS2 MinGW64" shell
+cd wrapper-java
+cmake -DCMAKE_BUILD_TYPE=MinSizeRel \
+      -DCMAKE_C_COMPILER=gcc \
+      -DCMAKE_CXX_COMPILER=g++ \
+      -DCMAKE_C_FLAGS="-Os -flto -ffunction-sections -fdata-sections" \
+      -DCMAKE_CXX_FLAGS="-Os -flto -ffunction-sections -fdata-sections" \
+      -G "MinGW Makefiles" -S src/main -B build/cmake
+
+cmake --build build/cmake -j $(nproc)
+```
+
+### Output
+
+| Platform | File |
+|---|---|
+| Linux | `build/cmake/libquickjs-java-wrapper.so` |
+| macOS | `build/cmake/libquickjs-java-wrapper.dylib` |
+| Windows | `build/cmake/libquickjs-java-wrapper.dll` |
+
+### Gradle Build (Java JAR)
+
+```bash
+cd ../..  # back to project root
+./gradlew :wrapper-java:assemble
+```
+
+Output JARs in `wrapper-java/build/libs/`:
+
+| JAR | Contents |
+|---|---|
+| `quickjs-java-wrapper.jar` | All 4 platforms (~1.4 MB) |
+| `quickjs-java-wrapper-linux-x86_64.jar` | Linux only (~370 KB) |
+| `quickjs-java-wrapper-macos-x86_64.jar` | macOS Intel only (~380 KB) |
+| `quickjs-java-wrapper-macos-arm64.jar` | macOS Apple Silicon only (~370 KB) |
+| `quickjs-java-wrapper-windows-x86_64.jar` | Windows only (~390 KB) |
+
+## Platform Detection
+
+`QuickJSNativeLoader` automatically detects the runtime platform and loads the matching native library:
+
+1. Try `System.loadLibrary("quickjs-java-wrapper")` from `java.library.path`
+2. Fallback: extract `native/<os>-<arch>/libquickjs-java-wrapper.*` from JAR to temp directory and load
+
+## Memory Management
+
+JS objects require explicit reference counting:
+
+```java
+JSObject obj = global.getJSObject("myObj");
+obj.release();  // must release when done
+```
+
+Use `releaseObjectRecords()` before `destroy()` to find leaked references in debug builds.

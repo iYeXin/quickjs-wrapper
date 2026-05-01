@@ -1,305 +1,171 @@
-# QuickJS For Android/JVM
-QuickJS wrapper for Android/JVM.
+# QuickJS Wrapper for JVM
 
-## Feature
-- Java types are supported with JavaScript
-- Support promise execute
-- JavaScript exception handler
-- Compile bytecode
-- Supports converting JS object types to Java HashMap.
-- ESModule (import, export)
-- Support 16KB page size
+QuickJS wrapper for JVM, upgraded to [QuickJS 2025-09-13](https://bellard.org/quickjs/).
 
-Experimental Features Stability not guaranteed.
-- Supports ArrayBuffer to a byte array type.
+> Forked from [HarlonWang/quickjs-wrapper](https://github.com/HarlonWang/quickjs-wrapper).
+
+## Highlights
+
+- **QuickJS 2025-09-13** — latest upstream with `FinalizationRegistry`, `WeakRef`, new BigInt, ES2023
+- **Native cross-platform** — Linux / macOS x86_64 / macOS ARM64 / Windows prebuilt binaries
+- **Auto-native loading** — detects platform and extracts native library from JAR automatically
+- **No external dependencies** — QuickJS C source compiled to ~750 KB native library
+- **ESModule support** (`import` / `export`)
+
+## Quick Start
+
+```java
+QuickJSContext ctx = QuickJSContext.create();
+ctx.evaluate("var x = 1 + 2;");
+
+JSObject global = ctx.getGlobalObject();
+global.setProperty("add", (JSCallFunction) args ->
+    ((Number) args[0]).intValue() + ((Number) args[1]).intValue()
+);
+
+Object result = global.getJSFunction("add").call(3, 4); // 7
+ctx.destroy();
+```
 
 ## Download
 
-[![Maven Central](https://img.shields.io/maven-central/v/wang.harlon.quickjs/wrapper-android.svg?label=Maven%20Central&color=blue)](https://central.sonatype.com/artifact/wang.harlon.quickjs/wrapper-android)
+### Maven (JitPack)
 
-```Groovy
-repositories {
-  mavenCentral()
-}
+```xml
+<repositories>
+    <repository>
+        <id>jitpack.io</id>
+        <url>https://jitpack.io</url>
+    </repository>
+</repositories>
 
-dependencies {
-  // Pick one:
-
-  // 1. Android - Use wrapper in your public API:
-  api 'wang.harlon.quickjs:wrapper-android:latest.version'
-
-  // 2. JVM - Use wrapper in your implementation only:
-  implementation 'wang.harlon.quickjs:wrapper-java:latest.version'
-}
+<dependencies>
+    <!-- All platforms (1.4 MB) -->
+    <dependency>
+        <groupId>com.github.iYeXin</groupId>
+        <artifactId>quickjs-java-wrapper</artifactId>
+        <version>v3.3.0</version>
+    </dependency>
+</dependencies>
 ```
 
-### SNAPSHOT 
-[![Wrapper](https://img.shields.io/static/v1?label=snapshot&message=wrapper&logo=apache%20maven&color=yellowgreen)](https://s01.oss.sonatype.org/content/repositories/snapshots/wang/harlon/quickjs/wrapper-android/) <br>
+### Platform-specific JARs
 
-<details>
- <summary>See how to import the snapshot</summary>
+Choose the JAR matching your deployment platform for smaller size:
 
-#### Including the SNAPSHOT
-Snapshots of the current development version of Wrapper are available, which track [the latest versions](https://s01.oss.sonatype.org/content/repositories/snapshots/wang/harlon/quickjs/wrapper-android/).
+| Platform       | Artifact                              | Size    |
+| -------------- | ------------------------------------- | ------- |
+| Linux x86_64   | `quickjs-java-wrapper-linux-x86_64`   | ~370 KB |
+| macOS x86_64   | `quickjs-java-wrapper-macos-x86_64`   | ~380 KB |
+| macOS ARM64    | `quickjs-java-wrapper-macos-arm64`    | ~370 KB |
+| Windows x86_64 | `quickjs-java-wrapper-windows-x86_64` | ~390 KB |
 
-To import snapshot versions on your project, add the code snippet below on your gradle file:
-```Gradle
-repositories {
-   maven { url 'https://s01.oss.sonatype.org/content/repositories/snapshots/' }
-}
-```
+### GitHub Releases
 
-Next, add the dependency below to your **module**'s `build.gradle` file:
-```gradle
-dependencies {
-    // For Android
-    implementation "wang.harlon.quickjs:wrapper-android:latest-SNAPSHOT"
-    // For JVM
-    implementation "wang.harlon.quickjs:wrapper-java:latest-SNAPSHOT"
-}
-```
+Prebuilt native binaries are attached to each [GitHub Release](https://github.com/iYeXin/quickjs-wrapper/releases):
 
-</details>
+- `libquickjs-java-wrapper.so` (Linux)
+- `libquickjs-java-wrapper.dylib` (macOS)
+- `libquickjs-java-wrapper.dll` (Windows)
 
-## Building the Project
-This repository use git submodules and so when you are checking out the app, you'll need to ensure the submodules are initialized properly. You can use the `--recursive` flag when cloning the project to do this.
-```git
-git clone --recursive https://github.com/HarlonWang/quickjs-wrapper.git
-```
-
-Alternatively, if you already have the project checked out, you can initialize the submodules manually.
-```git
-git submodule update --init
-```
-
-## Usage
-
-### Initialization
-In Android Platforms:
-```Java
-// You usually need to initialize it before using it..
-QuickJSLoader.init();
-```
-
-[Refer to here for other platforms.](./wrapper-java/README.md)
-
-### Create QuickJSContext
-
-```Java
-QuickJSContext context = QuickJSContext.create();
-
-// evaluating JavaScript
-context.evaluate("var a = 1 + 2;");
-
-// destroy QuickJSContext
-context.destroy();
-```
-
-### Console Support
-```Java
-context.setConsole(your console implementation.);
-```
-
-### Supported Types
-
-#### Java and JavaScript can directly convert to each other for the following basic types
-| JavaScript  | Java              |
-|-------------|-------------------|
-| null        | null              |
-| undefined   | null              |
-| boolean     | Boolean           |
-| Number      | Long/Int/Double   |
-| string      | String            |
-| Array       | JSArray           |
-| object      | JSObject          |
-| Function    | JSFunction        |
-| ArrayBuffer | byte[](Deep copy) |
-
-Since JavaScript doesn't have a `long` type, additional information about `long`:
-
-Java --> JavaScript
-  - The Long value <= Number.MAX_SAFE_INTEGER, will be convert to Number type.
-  - The Long value > Number.MAX_SAFE_INTEGER, will be convert to BigInt type.
-  - Number.MIN_SAFE_INTEGER is the same to above.
-
-JavaScript --> Java
-  - Number(Int64) or BigInt --> Long type
-
-
-### Set Property
-Java
+## API
 
 ```java
-QuickJSContext context = QuickJSContext.create();
-JSObject globalObj = context.getGlobalObject();
-JSObject repository = context.createNewJSObject();
-obj1.setProperty("name", "QuickJS Wrapper");
-obj1.setProperty("created", 2022);
-obj1.setProperty("version", 1.1);
-obj1.setProperty("signing_enabled", true);
-obj1.setProperty("getUrl", (JSCallFunction) args -> {
-    return "https://github.com/HarlonWang/quickjs-wrapper";
-});
-globalObj.setProperty("repository", repository);
-repository.release();
-```
+QuickJSContext ctx = QuickJSContext.create();
 
-JavaScript
+// Evaluate JavaScript
+ctx.evaluate("var obj = { name: 'hello', count: 42 };");
 
-```javascript
-repository.name; // QuickJS Wrapper
-repository.created; // 2022
-repository.version; // 1.1
-repository.signing_enabled; // true
-repository.getUrl(); // https://github.com/HarlonWang/quickjs-wrapper
-```                
+// Get global object
+JSObject global = ctx.getGlobalObject();
+JSObject obj = global.getJSObject("obj");
 
-### Get Property
-JavaScript
+// Read properties
+obj.getString("name");    // "hello"
+obj.getInteger("count");  // 42
 
-```JavaScript
-var repository = {
-	name: 'QuickJS Wrapper',
-	created: 2022,
-	version: 1.1,
-	signing_enabled: true,
-	getUrl: (name) => { return 'https://github.com/HarlonWang/quickjs-wrapper'; }
-}
-```
-Java
+// Set properties
+obj.setProperty("name", "world");
+obj.setProperty("count", 100);
 
-```Java
-QuickJSContext context = QuickJSContext.create();
-JSObject globalObject = context.getGlobalObject();
-JSObject repository = globalObject.getJSObject("repository");
-repository.getString("name"); // QuickJS Wrapper
-repository.getInteger("created"); // 2022
-repository.getDouble("version"); // 1.1
-repository.getBoolean("signing_enabled"); // true
-JSFunction fn = repository.getJSFunction("getUrl");
-String url = fn.call(); // https://github.com/HarlonWang/quickjs-wrapper
-fn.release();
-repository.release();
-```
+// Register Java callbacks
+global.setProperty("javaAdd", (JSCallFunction) args ->
+    ((Number) args[0]).intValue() + ((Number) args[1]).intValue()
+);
+ctx.evaluate("javaAdd(1, 2)"); // 3
 
-### Create JSObject in Java
-```Java
-QuickJSContext context = QuickJSContext.create();
-JSObject obj = context.createNewJSObject();
-// When not in use, it needs to be released, otherwise it will cause a memory leak.
-obj.release();
-```
-
-### Create JSArray in Java
-```Java
-QuickJSContext context = QuickJSContext.create();
-JSArray array = context.createNewJSArray();
-array.release();
-```
-
-### How to return Function to JavaScript in Java
-```Java
-QuickJSContext context = createContext();
-context.getGlobalObject().setProperty("test", args -> (JSCallFunction) args1 -> "123");
-context.evaluate("console.log(test()());");
-```
-
-Also, you can view it in `QuickJSTest.testReturnJSCallback` code
-
-
-### Compile ByteCode
-
-```Java
-byte[] code = context.compile("'hello, world!'.toUpperCase();");
-context.execute(code);
-```
-
-### ESModule
-Java
-```Java
-// 1. string code mode
-context.setModuleLoader(new QuickJSContext.DefaultModuleLoader() {
-    @Override
-    public String getModuleStringCode(String moduleName) {
-       if (moduleName.equals("a.js")) {
-           return "export var name = 'Jack';\n" +
-                   "export var age = 18;";
-       }
-       return null;
-    }
+// Console output
+ctx.setConsole(new QuickJSContext.Console() {
+    public void log(String s) { System.out.println(s); }
+    public void info(String s) { System.out.println(s); }
+    public void warn(String s) { System.err.println(s); }
+    public void error(String s) { System.err.println(s); }
 });
 
-// 2. bytecode mode
-context.setModuleLoader(new QuickJSContext.BytecodeModuleLoader() {
-    @Override
-    public byte[] getModuleBytecode(String moduleName) {
-        return context.compileModule("export var name = 'Jack';export var age = 18;", moduleName);
-    }
-});
+ctx.evaluate("console.log('Hello from JS!');");
 
-// 3. use `evaluateModule` for module script
-context.evaluateModule(...);
-```
-JavaScript
-```JavaScript
-import {name, age} from './a.js';
+// Manual memory management
+JSFunction func = obj.getJSFunction("someMethod");
+func.call(args);
+func.release();  // must release after use
 
-console.log('name：' + name); // Jack
-console.log('age：' + age); // 18
+// Destroy context
+ctx.destroy();
 ```
 
-### Object release
-We typically recommend releasing reference relationships actively after using Java objects to avoid memory leaks. Additionally, the engine will release unreleased objects when destroy, but this timing may be a bit later.
-```java
-JSFunction func = xxx.getJSFunction("test");
-func.call();
-func.release();
+## Building from Source
 
-JSObject obj = xxx.getJSObject("test");
-int a = obj.getString("123");
-obj.release();
+### Prerequisites
 
-// If the return value is an object, it also needs to be released, 
-JSObject ret = jsFunction.call();
-ret.release();
+- JDK 21+ with `JAVA_HOME` set
+- CMake 3.23+
+- C/C++ compiler (GCC, Clang, or MSVC)
 
-// If you don't need to handle the return value, it is recommended to call the following method.
-jsFunction.callVoid(xxx);
+### Build
+
+```bash
+git clone --recursive https://github.com/iYeXin/quickjs-wrapper.git
+cd quickjs-wrapper
 ```
 
-It's important to note that if the result is being returned for use in JavaScript, there is no need to release it.
-```java
-context.getGlobalObject().setProperty("test", new JSCallFunction() {
-  @Override
-  public Object call(Object... args) {
-    JSObject ret = context.createNewJSObject();
-    // There is no need to call the release method here.
-    // ret.release();
-    return ret;
-  }
-});
+**Linux / macOS:**
+```bash
+cd wrapper-java
+cmake -DCMAKE_BUILD_TYPE=MinSizeRel \
+      -DCMAKE_C_FLAGS="-Os -flto" \
+      -DCMAKE_CXX_FLAGS="-Os -flto" \
+      -G Ninja -S src/main -B build/cmake
+cmake --build build/cmake -j $(nproc)
 ```
 
-## R8 / ProGuard
-If you are using R8 the shrinking and obfuscation rules are included automatically.
+**Windows (MSYS2 MinGW):**
+```bash
+pacman -S mingw-w64-x86_64-gcc mingw-w64-x86_64-cmake mingw-w64-x86_64-ninja
 
-ProGuard users must manually add the options from [consumer-rules.pro](/wrapper-android/consumer-rules.pro).
+cd wrapper-java
+cmake -DCMAKE_BUILD_TYPE=MinSizeRel \
+      -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++ \
+      -DCMAKE_C_FLAGS="-Os -flto" \
+      -DCMAKE_CXX_FLAGS="-Os -flto" \
+      -G "MinGW Makefiles" -S src/main -B build/cmake
+cmake --build build/cmake -j $(nproc)
+```
 
-## Concurrency
-JavaScript runtimes are single threaded. All execution in the JavaScript runtime is guaranteed thread safe, by way of Java synchronization.
+Output: `wrapper-java/build/cmake/libquickjs-java-wrapper.{so,dylib,dll}`
 
-## Find this repository useful?
-Support it by joining __[stargazers](https://github.com/HarlonWang/quickjs-wrapper/stargazers)__ for this repository. <br>
-Also, Sponsoring me will make this library even better! 
+## Changes from Upstream
 
-<img src="images/alipay.jpg" width="372" height="508"> <img src="images/wechat.png" width="372" height="508">
+| Change                  | Reason                                                       |
+| ----------------------- | ------------------------------------------------------------ |
+| QuickJS → 2025-09-13    | ES2023, `FinalizationRegistry`, `WeakRef`, new BigInt        |
+| Removed `CONFIG_BIGNUM` | Bignum extension removed in QuickJS 2025-04-26               |
+| Added `dtoa.c/h`        | Replaces removed `libbf`                                     |
+| Auto-native loading     | `QuickJSNativeLoader` detects platform, extracts from JAR    |
+| Platform-specific JARs  | Smaller deployment, ~370 KB vs 1.4 MB                        |
+| Cross-platform CI       | GitHub Actions builds Linux/macOS x86_64/macOS ARM64/Windows |
 
-## Stargazers over time
+## License
 
-[![Stargazers over time](https://starchart.cc/HarlonWang/quickjs-wrapper.svg)](https://starchart.cc/HarlonWang/quickjs-wrapper)
+Apache 2.0 — inherits from [HarlonWang/quickjs-wrapper](https://github.com/HarlonWang/quickjs-wrapper).
 
-## Reference
-
-- [quickjs-java](https://github.com/cashapp/quickjs-java)
-- [quack](https://github.com/koush/quack)
-- [quickjs-android](https://github.com/taoweiji/quickjs-android)
+QuickJS engine is MIT licensed (Fabrice Bellard).

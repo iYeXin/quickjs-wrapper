@@ -216,10 +216,11 @@ public class QuickJSContext implements Closeable {
                     return o;
                 }
             };
+            QuickJSNativeLoader.load();
             runtime = createRuntime();
             context = createContext(runtime);
         } catch (UnsatisfiedLinkError e) {
-            throw new QuickJSException("The so library must be initialized before createContext! QuickJSLoader.init should be called on the Android platform. In the JVM, you need to manually call System.loadLibrary");
+            throw new QuickJSException("Failed to load native library. Make sure the native library for your platform is bundled or available on java.library.path.", e);
         }
         currentThreadId = Thread.currentThread().getId();
     }

@@ -1,5 +1,24 @@
 # Change Log
 
+## 3.3.0 *(2026-05-01)*
+
+### Breaking Changes
+- **QuickJS 2025-09-13** — upgraded from 2024-02-14 to latest upstream. Enables `FinalizationRegistry`, `WeakRef`, symbols as weakrefs, new BigInt implementation, ES2023
+- Removed `CONFIG_BIGNUM` — bignum extension removed in QuickJS 2025-04-26, replaced by built-in BigInt. `libbf.c/h` → `dtoa.c/h`
+- Group ID changed: `wang.harlon.quickjs` → `com.github.iYeXin`
+
+### New Features
+- **Cross-platform native builds** — prebuilt native libraries for Linux/macOS x86_64/macOS ARM64/Windows via GitHub Actions CI
+- **Platform-specific JARs** — smaller deployment (~370 KB) with only the native lib for the target platform
+- **Auto-native loading** — `QuickJSNativeLoader` detects platform and extracts native library from JAR automatically, no manual `System.loadLibrary` needed
+    
+### Infrastructure
+- Cross-platform CI (GitHub Actions matrix: ubuntu-24.04, macos-14, macos-15, windows-2025 + MSYS2)
+- GitHub Releases automatically attach native binaries (.so, .dylib, .dll)
+- Removed Android demo app (`app/`), donation images (`images/`), developer notes (`remarks.md`)
+
+---
+
 ## 3.2.3 *(2025-07-01)*
 - refactor: 优化 JS 空返回类型
 

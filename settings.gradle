@@ -1,4 +1,3 @@
 rootProject.name = "quickjs-wrapper"
-include ':app'
 include ':wrapper-android'
 include ':wrapper-java'

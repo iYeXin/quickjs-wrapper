@@ -22,41 +22,38 @@ allprojects {
 }
 
 subprojects {
-    if (project.name != "app") {
+    apply plugin: "com.vanniktech.maven.publish"
 
-        apply plugin: "com.vanniktech.maven.publish"
+    group = "com.github.iYeXin"
 
-        group = "wang.harlon.quickjs"
+    mavenPublishing {
+        publishToMavenCentral(true)
 
-        mavenPublishing {
-            publishToMavenCentral(true)
+        signAllPublications()
 
-            signAllPublications()
-
-            pom {
-                name = "QuickJS Wrapper"
-                description = "Quickjs wrapper library for Android/JVM."
-                inceptionYear = "2022"
-                url = "https://github.com/HarlonWang/quickjs-wrapper"
-                licenses {
-                    license {
-                        name = "The Apache License, Version 2.0"
-                        url = "http://www.apache.org/licenses/LICENSE-2.0.txt"
-                        distribution = "http://www.apache.org/licenses/LICENSE-2.0.txt"
-                    }
+        pom {
+            name = "QuickJS Wrapper"
+            description = "QuickJS wrapper for JVM, upgraded to QuickJS 2025-09-13 with FinalizationRegistry support."
+            inceptionYear = "2022"
+            url = "https://github.com/iYeXin/quickjs-wrapper"
+            licenses {
+                license {
+                    name = "The Apache License, Version 2.0"
+                    url = "http://www.apache.org/licenses/LICENSE-2.0.txt"
+                    distribution = "http://www.apache.org/licenses/LICENSE-2.0.txt"
                 }
-                developers {
-                    developer {
-                        id = "HarlonWang"
-                        name = "Harlon Wang"
-                        url = "https://github.com/HarlonWang"
-                    }
+            }
+            developers {
+                developer {
+                    id = "iYeXin"
+                    name = "YeXin"
+                    url = "https://github.com/iYeXin"
                 }
-                scm {
-                    url = "https://github.com/HarlonWang/quickjs-wrapper"
-                    connection = "scm:git:git://github.com/HarlonWang/quickjs-wrapper.git"
-                    developerConnection = "scm:git:ssh://github.com/HarlonWang/quickjs-wrapper.git"
-                }
+            }
+            scm {
+                url = "https://github.com/iYeXin/quickjs-wrapper"
+                connection = "scm:git:git://github.com/iYeXin/quickjs-wrapper.git"
+                developerConnection = "scm:git:ssh://github.com/iYeXin/quickjs-wrapper.git"
             }
         }
     }

@@ -16,6 +16,11 @@ public class QuickJSException extends RuntimeException {
         this.jsError = jsError;
     }
 
+    public QuickJSException(String message, Throwable cause) {
+        super(message, cause);
+        this.jsError = false;
+    }
+
     public boolean isJSError() {
         return jsError;
     }
