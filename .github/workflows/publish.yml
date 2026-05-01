@@ -49,8 +49,8 @@ jobs:
             mingw-w64-x86_64-ninja
             mingw-w64-x86_64-make
 
-      - name: Build (Unix)
-        if: matrix.os != 'windows-2025'
+      - name: Build (Linux)
+        if: matrix.os == 'ubuntu-24.04'
         run: |
           cd wrapper-java
           cmake -DCMAKE_BUILD_TYPE=MinSizeRel \
@@ -58,7 +58,17 @@ jobs:
                 -DCMAKE_CXX_FLAGS="-Os -flto -ffunction-sections -fdata-sections" \
                 -DCMAKE_SHARED_LINKER_FLAGS="-Wl,--gc-sections -Wl,--strip-all" \
                 -G Ninja -S src/main -B build
-          cmake --build build -j $(nproc || sysctl -n hw.logicalcpu)
+          cmake --build build -j $(nproc)
+
+      - name: Build (macOS)
+        if: matrix.os == 'macos-14' || matrix.os == 'macos-15'
+        run: |
+          cd wrapper-java
+          cmake -DCMAKE_BUILD_TYPE=MinSizeRel \
+                -DCMAKE_C_FLAGS="-Os -flto" \
+                -DCMAKE_CXX_FLAGS="-Os -flto" \
+                -G Ninja -S src/main -B build
+          cmake --build build -j $(sysctl -n hw.logicalcpu)
 
       - name: Build (Windows)
         if: matrix.os == 'windows-2025'
@@ -117,6 +127,8 @@ jobs:
       - uses: gradle/gradle-build-action@v2
 
       - name: Publish to Maven Central
+        if: ${{ secrets.SONATYPE_NEXUS_USERNAME != '' }}
+        continue-on-error: true
         run: ./gradlew publish
         env:
           ORG_GRADLE_PROJECT_mavenCentralUsername: ${{ secrets.SONATYPE_NEXUS_USERNAME }}
@@ -125,6 +137,7 @@ jobs:
           ORG_GRADLE_PROJECT_signingInMemoryKeyPassword: ${{ secrets.SIGNING_PASSWORD }}
 
       - name: Create Release with native binaries
+        if: always()
         uses: softprops/action-gh-release@v2
         with:
           token: ${{ github.token }}
