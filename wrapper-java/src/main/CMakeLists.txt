@@ -14,9 +14,6 @@ add_library( # Sets the name of the library.
         # Provides a relative path to your source file(s).
         ${wrapper_src} ${quickjs_src})
 
-if(MINGW)
-    target_link_options(quickjs-java-wrapper PRIVATE -static-libgcc -static-libstdc++ -Wl,-Bstatic -lwinpthread -Wl,-Bdynamic)
-endif()
 
 
 include_directories($ENV{JAVA_HOME}/include/)

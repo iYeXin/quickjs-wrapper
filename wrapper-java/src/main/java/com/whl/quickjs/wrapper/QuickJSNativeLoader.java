@@ -31,17 +31,9 @@ final class QuickJSNativeLoader {
             String libPath = "native/" + platform + "/" + mapLibName(platform);
             try (InputStream is = QuickJSNativeLoader.class.getClassLoader().getResourceAsStream(libPath)) {
                 if (is != null) {
-                    Path tempDir = Files.createTempDirectory("quickjs-java-wrapper-");
-                    tempDir.toFile().deleteOnExit();
-
-                    // On Windows, extract dependent DLLs first to the same directory
-                    if (platform.startsWith("windows")) {
-                        extractDependency(tempDir, "native/" + platform + "/libwinpthread-1.dll");
-                    }
-
-                    Path tempFile = tempDir.resolve(mapLibName(platform));
-                    Files.copy(is, tempFile, StandardCopyOption.REPLACE_EXISTING);
+                    Path tempFile = Files.createTempFile("quickjs-java-wrapper-", libExt(platform));
                     tempFile.toFile().deleteOnExit();
+                    Files.copy(is, tempFile, StandardCopyOption.REPLACE_EXISTING);
                     System.load(tempFile.toAbsolutePath().toString());
                     loaded = true;
                     return;
@@ -54,18 +46,6 @@ final class QuickJSNativeLoader {
             "Failed to load native library '" + mapLibName(detectPlatform()) + "'. " +
             "Make sure the native library is on java.library.path or bundled in the JAR."
         );
-    }
-
-    private static void extractDependency(Path targetDir, String resourcePath) {
-        try (InputStream is = QuickJSNativeLoader.class.getClassLoader().getResourceAsStream(resourcePath)) {
-            if (is != null) {
-                String name = resourcePath.substring(resourcePath.lastIndexOf('/') + 1);
-                Path depFile = targetDir.resolve(name);
-                Files.copy(is, depFile, StandardCopyOption.REPLACE_EXISTING);
-                depFile.toFile().deleteOnExit();
-            }
-        } catch (IOException ignored) {
-        }
     }
 
     private static String detectPlatform() {
