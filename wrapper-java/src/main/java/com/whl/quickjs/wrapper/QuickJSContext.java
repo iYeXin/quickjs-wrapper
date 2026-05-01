@@ -124,6 +124,18 @@ public class QuickJSContext implements Closeable {
         runGC(runtime);
     }
 
+    /**
+     * Execute a single pending job (microtask / Promise callback).
+     * Call this from the Java event loop to pump the Promise queue.
+     *
+     * @return 1 if a job was executed, 0 if no jobs pending, -1 on error
+     */
+    public int executePendingJob() {
+        checkSameThread();
+        checkDestroyed();
+        return QuickJSContext.executePendingJob(runtime);
+    }
+
     public void setMemoryLimit(int memoryLimitSize) {
         setMemoryLimit(runtime, memoryLimitSize);
     }
@@ -468,7 +480,11 @@ public class QuickJSContext implements Closeable {
         set(context, jsArray.getPointer(), value, index);
     }
 
-    Object call(JSObject func, long objPointer, int thisPointerTag, Object... args) {
+    /**
+     * Call a JS function with the given args.
+     * The func must be alive until after the call completes.
+     */
+    public Object call(JSObject func, long objPointer, int thisPointerTag, Object... args) {
         checkSameThread();
         checkDestroyed();
 
@@ -599,6 +615,7 @@ public class QuickJSContext implements Closeable {
     private native void dumpObjects(long runtime, String fileName);
     private native long getMemoryUsedSize(long runtime);
     private native void setGCThreshold(long runtime, int size);
+    private static native int executePendingJob(long runtime);
 
     // context
     private native long createContext(long runtime);

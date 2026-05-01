@@ -320,3 +320,22 @@ Java_com_whl_quickjs_wrapper_QuickJSContext_setGCThreshold(JNIEnv *env, jobject 
     }
     JS_SetGCThreshold(rt, size);
 }
+
+extern "C" JNIEXPORT jint JNICALL
+Java_com_whl_quickjs_wrapper_QuickJSContext_executePendingJob(JNIEnv *env, jclass clazz, jlong runtime)
+{
+    auto *rt = reinterpret_cast<JSRuntime *>(runtime);
+    JSContext *ctx;
+    int err = JS_ExecutePendingJob(rt, &ctx);
+    if (err < 0)
+    {
+        auto *wrapper = reinterpret_cast<QuickJSWrapper *>(JS_GetRuntimeOpaque(rt));
+        if (wrapper && wrapper->context)
+        {
+            string error = QuickJSWrapper::getJSErrorStr(wrapper->context);
+            QuickJSWrapper::throwJSException(env, error.c_str());
+        }
+        return -1;
+    }
+    return err;
+}
