@@ -19,7 +19,6 @@ class QuickJSWrapper
 {
 private:
     jstring toJavaString(JNIEnv *env, JSValue value) const;
-    jobject toJavaObject(JNIEnv *env, jobject thiz, JSValueConst this_obj, JSValueConst value) const;
     JSValue toJSValue(JNIEnv *env, jobject thiz, jobject value) const;
 
 public:
@@ -89,6 +88,7 @@ public:
     void dupValue(jlong) const;
     void freeDupValue(jlong) const;
     jobject parseJSON(JNIEnv *, jobject, jstring);
+    jobject toJavaObject(JNIEnv *env, jobject thiz, JSValueConst this_obj, JSValueConst value) const;
 
     // JS --> bytecode
     jbyteArray compile(JNIEnv *, jstring, jstring, jboolean) const;

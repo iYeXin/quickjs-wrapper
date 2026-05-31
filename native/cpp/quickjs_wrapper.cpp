@@ -743,7 +743,6 @@ JSValue QuickJSWrapper::jsFuncCall(int callback_id, JSValueConst this_val, int a
         auto java_arg = toJavaObject(jniEnv, jniThiz, this_val, v);
         jniEnv->SetObjectArrayElement(javaArgs, (jsize)i, java_arg);
         jniEnv->DeleteLocalRef(java_arg);
-        JS_FreeValue(context, v);
     }
 
     auto result = jniEnv->CallObjectMethod(jniThiz, callFunctionBackM, callback_id, javaArgs);

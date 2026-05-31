@@ -552,6 +552,12 @@ public class QuickJSContext implements Closeable {
         return parseJSON(context, json);
     }
 
+    public Object parseBuffer(java.nio.ByteBuffer buffer) {
+        checkSameThread();
+        checkDestroyed();
+        return parseBuffer(context, buffer);
+    }
+
     public byte[] compile(String script) {
         return compile(script, UNKNOWN_FILE);
     }
@@ -646,6 +652,7 @@ public class QuickJSContext implements Closeable {
     private native void dupValue(long context, long objValue);
     private native void freeDupValue(long context, long objValue);
     private native Object parseJSON(long context, String json);
+    private native Object parseBuffer(long context, java.nio.ByteBuffer buffer);
     private native byte[] compile(long context, String sourceCode, String fileName, boolean isModule); // Bytecode compile
     private native Object execute(long context, byte[] bytecode); // Bytecode execute
     private native Object getOwnPropertyNames(long context, long objValue);
