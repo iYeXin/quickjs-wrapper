@@ -17,6 +17,14 @@ add_library( # Sets the name of the library.
 
 
 include_directories($ENV{JAVA_HOME}/include/)
-include_directories($ENV{JAVA_HOME}/include/darwin)
-include_directories($ENV{JAVA_HOME}/include/linux)
-include_directories($ENV{JAVA_HOME}/include/win32)
+
+if(DEFINED ENV{JAVA_PLATFORM_INCLUDE} AND NOT "$ENV{JAVA_PLATFORM_INCLUDE}" STREQUAL "")
+    # Cross-compilation: point to extracted Windows jni_md.h, etc.
+    include_directories($ENV{JAVA_PLATFORM_INCLUDE})
+elseif(WIN32)
+    include_directories($ENV{JAVA_HOME}/include/win32)
+elseif(APPLE)
+    include_directories($ENV{JAVA_HOME}/include/darwin)
+else()
+    include_directories($ENV{JAVA_HOME}/include/linux)
+endif()

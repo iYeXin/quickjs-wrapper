@@ -60,10 +60,14 @@ jobs:
         run: |
           cd wrapper-java
           cmake -DCMAKE_BUILD_TYPE=MinSizeRel \
-                -DCMAKE_C_FLAGS="-O2 -flto" \
-                -DCMAKE_CXX_FLAGS="-O2 -flto" \
+                -DCMAKE_C_FLAGS="-O2 -flto -ffunction-sections -fdata-sections" \
+                -DCMAKE_CXX_FLAGS="-O2 -flto -ffunction-sections -fdata-sections" \
+                -DCMAKE_SHARED_LINKER_FLAGS="-Wl,--gc-sections" \
                 -G Ninja -S src/main -B build
           cmake --build build -j $(sysctl -n hw.logicalcpu)
+
+      - name: Strip
+        run: strip -S wrapper-java/build/libquickjs-java-wrapper.dylib
 
       - uses: actions/upload-artifact@v4
         with:
@@ -86,21 +90,25 @@ jobs:
         run: |
           cd wrapper-java
           cmake -DCMAKE_BUILD_TYPE=MinSizeRel \
-                -DCMAKE_C_FLAGS="-Os -flto" \
-                -DCMAKE_CXX_FLAGS="-Os -flto" \
+                -DCMAKE_C_FLAGS="-Os -flto -ffunction-sections -fdata-sections" \
+                -DCMAKE_CXX_FLAGS="-Os -flto -ffunction-sections -fdata-sections" \
+                -DCMAKE_SHARED_LINKER_FLAGS="-Wl,--gc-sections" \
                 -G Ninja -S src/main -B build
           cmake --build build -j $(sysctl -n hw.logicalcpu)
+
+      - name: Strip
+        run: strip -S wrapper-java/build/libquickjs-java-wrapper.dylib
 
       - uses: actions/upload-artifact@v4
         with:
           name: native-macos-arm64
           path: wrapper-java/build/libquickjs-java-wrapper.dylib
 
+  # Windows: cross-compiled from Linux via MinGW-w64.
+  # Benefits: no MSYS2 setup (~3min saved), fully static DLL (no winpthread dependency),
+  # LTO works natively, unified build across all platforms.
   build-windows:
-    runs-on: windows-2025
-    defaults:
-      run:
-        shell: msys2 {0}
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
         with:
@@ -111,38 +119,42 @@ jobs:
           distribution: 'temurin'
           java-version: 21
 
-      - uses: msys2/setup-msys2@v2
-        with:
-          msystem: mingw64
-          update: true
-          install: >-
-            mingw-w64-x86_64-gcc
-            mingw-w64-x86_64-cmake
-            mingw-w64-x86_64-ninja
-            mingw-w64-x86_64-make
+      - name: Install MinGW cross-compiler
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq gcc-mingw-w64-x86-64 g++-mingw-w64-x86-64 mingw-w64-x86_64-dev ninja-build
 
-      - name: Build
+      - name: Prepare Windows JNI header
+        run: |
+          mkdir -p /tmp/jni-win32
+          cat > /tmp/jni-win32/jni_md.h << 'JNIEOF'
+          #define JNIEXPORT __declspec(dllexport)
+          #define JNIIMPORT __declspec(dllimport)
+          #define JNICALL __stdcall
+          typedef long jint;
+          typedef long long jlong;
+          typedef signed char jbyte;
+JNIEOF
+
+      - name: Build (cross-compile)
+        env:
+          JAVA_PLATFORM_INCLUDE: /tmp/jni-win32
         run: |
           cd wrapper-java
           cmake -DCMAKE_BUILD_TYPE=MinSizeRel \
-                -DCMAKE_C_COMPILER=gcc \
-                -DCMAKE_CXX_COMPILER=g++ \
-                -DCMAKE_C_FLAGS="-O2 -ffunction-sections -fdata-sections" \
-                -DCMAKE_CXX_FLAGS="-O2 -ffunction-sections -fdata-sections" \
-                -DCMAKE_SHARED_LINKER_FLAGS="-static-libgcc -static-libstdc++ -Wl,--gc-sections -Wl,-Bstatic -l:libwinpthread.a -Wl,-Bdynamic" \
-                -G "MinGW Makefiles" -S src/main -B build
+                -DCMAKE_SYSTEM_NAME=Windows \
+                -DCMAKE_C_COMPILER=x86_64-w64-mingw32-gcc \
+                -DCMAKE_CXX_COMPILER=x86_64-w64-mingw32-g++ \
+                -DCMAKE_AR=x86_64-w64-mingw32-gcc-ar \
+                -DCMAKE_RANLIB=x86_64-w64-mingw32-gcc-ranlib \
+                -DCMAKE_C_FLAGS="-O2 -flto -ffunction-sections -fdata-sections" \
+                -DCMAKE_CXX_FLAGS="-O2 -flto -ffunction-sections -fdata-sections" \
+                -DCMAKE_SHARED_LINKER_FLAGS="-static -Wl,--gc-sections -Wl,--strip-all" \
+                -DCMAKE_FIND_ROOT_PATH=/usr/x86_64-w64-mingw32 \
+                -G Ninja -S src/main -B build
           cmake --build build -j $(nproc)
-
-      - name: Bundle Windows runtime dep
-        run: |
-          cp /mingw64/bin/libwinpthread-1.dll wrapper-java/build/
-
-      - name: Strip
-        run: strip --strip-all wrapper-java/build/libquickjs-java-wrapper.dll
 
       - uses: actions/upload-artifact@v4
         with:
           name: native-windows-x86_64
-          path: |
-            wrapper-java/build/libquickjs-java-wrapper.dll
-            wrapper-java/build/libwinpthread-1.dll
+          path: wrapper-java/build/libquickjs-java-wrapper.dll

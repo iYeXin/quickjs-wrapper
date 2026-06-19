@@ -11,22 +11,71 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: ubuntu-24.04
+          - name: linux
+            os: ubuntu-24.04
             artifact: native-linux-x86_64
             lib_name: libquickjs-java-wrapper.so
-          - os: macos-14
+            setup: ""
+            cmake_system: ""
+            cc: gcc
+            cxx: g++
+            c_flags: "-O2 -flto -ffunction-sections -fdata-sections"
+            cxx_flags: "-O2 -flto -ffunction-sections -fdata-sections"
+            link_flags: "-Wl,--gc-sections -Wl,--strip-all"
+            cmake_generator: "Ninja"
+            parallel_cmd: "nproc"
+            find_root: ""
+            platform_include: ""
+
+          - name: macos-x86_64
+            os: macos-14
             artifact: native-macos-x86_64
             lib_name: libquickjs-java-wrapper.dylib
-          - os: macos-15
+            setup: ""
+            cmake_system: ""
+            cc: gcc
+            cxx: g++
+            c_flags: "-O2 -flto -ffunction-sections -fdata-sections"
+            cxx_flags: "-O2 -flto -ffunction-sections -fdata-sections"
+            link_flags: "-Wl,--gc-sections"
+            cmake_generator: "Ninja"
+            parallel_cmd: "sysctl -n hw.logicalcpu"
+            find_root: ""
+            platform_include: ""
+
+          - name: macos-arm64
+            os: macos-15
             artifact: native-macos-arm64
             lib_name: libquickjs-java-wrapper.dylib
-          - os: windows-2025
+            setup: ""
+            cmake_system: ""
+            cc: gcc
+            cxx: g++
+            c_flags: "-Os -flto -ffunction-sections -fdata-sections"
+            cxx_flags: "-Os -flto -ffunction-sections -fdata-sections"
+            link_flags: "-Wl,--gc-sections"
+            cmake_generator: "Ninja"
+            parallel_cmd: "sysctl -n hw.logicalcpu"
+            find_root: ""
+            platform_include: ""
+
+          - name: windows
+            os: ubuntu-24.04
             artifact: native-windows-x86_64
             lib_name: libquickjs-java-wrapper.dll
+            setup: "cross"
+            cmake_system: "-DCMAKE_SYSTEM_NAME=Windows -DCMAKE_FIND_ROOT_PATH=/usr/x86_64-w64-mingw32"
+            cc: x86_64-w64-mingw32-gcc
+            cxx: x86_64-w64-mingw32-g++
+            c_flags: "-O2 -flto -ffunction-sections -fdata-sections"
+            cxx_flags: "-O2 -flto -ffunction-sections -fdata-sections"
+            link_flags: "-static -Wl,--gc-sections -Wl,--strip-all"
+            cmake_generator: "Ninja"
+            parallel_cmd: "nproc"
+            find_root: ""
+            platform_include: "prepare-jni"
+
     runs-on: ${{ matrix.os }}
-    defaults:
-      run:
-        shell: ${{ matrix.os == 'windows-2025' && 'msys2 {0}' || 'bash' }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -37,69 +86,51 @@ jobs:
           distribution: 'temurin'
           java-version: 21
 
-      - name: Setup MSYS2 (Windows)
-        if: matrix.os == 'windows-2025'
-        uses: msys2/setup-msys2@v2
-        with:
-          msystem: mingw64
-          update: true
-          install: >-
-            mingw-w64-x86_64-gcc
-            mingw-w64-x86_64-cmake
-            mingw-w64-x86_64-ninja
-            mingw-w64-x86_64-make
+      - name: Install MinGW cross-compiler
+        if: matrix.setup == 'cross'
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq gcc-mingw-w64-x86-64 g++-mingw-w64-x86-64 mingw-w64-x86_64-dev ninja-build
 
-      - name: Build (Linux)
-        if: matrix.os == 'ubuntu-24.04'
+      - name: Prepare Windows JNI header
+        if: matrix.platform_include == 'prepare-jni'
+        run: |
+          mkdir -p /tmp/jni-win32
+          cat > /tmp/jni-win32/jni_md.h << 'JNIEOF'
+          #define JNIEXPORT __declspec(dllexport)
+          #define JNIIMPORT __declspec(dllimport)
+          #define JNICALL __stdcall
+          typedef long jint;
+          typedef long long jlong;
+          typedef signed char jbyte;
+JNIEOF
+
+      - name: Build
+        env:
+          JAVA_PLATFORM_INCLUDE: ${{ matrix.platform_include == 'prepare-jni' && '/tmp/jni-win32' || '' }}
         run: |
           cd wrapper-java
           cmake -DCMAKE_BUILD_TYPE=MinSizeRel \
-                -DCMAKE_C_FLAGS="-O2 -flto -ffunction-sections -fdata-sections" \
-                -DCMAKE_CXX_FLAGS="-O2 -flto -ffunction-sections -fdata-sections" \
-                -DCMAKE_SHARED_LINKER_FLAGS="-Wl,--gc-sections -Wl,--strip-all" \
-                -G Ninja -S src/main -B build
-          cmake --build build -j $(nproc)
+                ${{ matrix.cmake_system }} \
+                -DCMAKE_C_COMPILER=${{ matrix.cc }} \
+                -DCMAKE_CXX_COMPILER=${{ matrix.cxx }} \
+                -DCMAKE_AR=${{ matrix.cc }}-ar \
+                -DCMAKE_RANLIB=${{ matrix.cc }}-ranlib \
+                -DCMAKE_C_FLAGS="${{ matrix.c_flags }}" \
+                -DCMAKE_CXX_FLAGS="${{ matrix.cxx_flags }}" \
+                -DCMAKE_SHARED_LINKER_FLAGS="${{ matrix.link_flags }}" \
+                ${{ matrix.find_root }} \
+                -G "${{ matrix.cmake_generator }}" -S src/main -B build
+          cmake --build build -j $(${{ matrix.parallel_cmd }})
 
-      - name: Build (macOS)
-        if: matrix.os == 'macos-14' || matrix.os == 'macos-15'
-        run: |
-          cd wrapper-java
-          cmake -DCMAKE_BUILD_TYPE=MinSizeRel \
-                -DCMAKE_C_FLAGS="-O2 -flto" \
-                -DCMAKE_CXX_FLAGS="-O2 -flto" \
-                -G Ninja -S src/main -B build
-          cmake --build build -j $(sysctl -n hw.logicalcpu)
-
-      - name: Build (Windows)
-        if: matrix.os == 'windows-2025'
-        run: |
-          cd wrapper-java
-          cmake -DCMAKE_BUILD_TYPE=MinSizeRel \
-                -DCMAKE_C_COMPILER=gcc \
-                -DCMAKE_CXX_COMPILER=g++ \
-                -DCMAKE_C_FLAGS="-O2 -ffunction-sections -fdata-sections" \
-                -DCMAKE_CXX_FLAGS="-O2 -ffunction-sections -fdata-sections" \
-                -DCMAKE_SHARED_LINKER_FLAGS="-static-libgcc -static-libstdc++ -Wl,--gc-sections -Wl,-Bstatic -l:libwinpthread.a -Wl,-Bdynamic" \
-                -G "MinGW Makefiles" -S src/main -B build
-          cmake --build build -j $(nproc)
-
-      - name: Bundle Windows runtime dep
-        if: matrix.os == 'windows-2025'
-        run: |
-          cp /mingw64/bin/libwinpthread-1.dll wrapper-java/build/
-          mkdir -p src/main/resources/native/windows-x86_64
-          cp /mingw64/bin/libwinpthread-1.dll src/main/resources/native/windows-x86_64/
-
-      - name: Strip (Windows)
-        if: matrix.os == 'windows-2025'
-        run: strip --strip-all wrapper-java/build/${{ matrix.lib_name }}
+      - name: Strip
+        if: matrix.name == 'windows'
+        run: x86_64-w64-mingw32-strip --strip-all wrapper-java/build/${{ matrix.lib_name }}
 
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact }}
-          path: |
-            wrapper-java/build/${{ matrix.lib_name }}
-            wrapper-java/build/libwinpthread-1.dll
+          path: wrapper-java/build/${{ matrix.lib_name }}
 
   publish:
     needs: [build-native]
