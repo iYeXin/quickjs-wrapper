@@ -127,14 +127,12 @@ jobs:
       - name: Prepare Windows JNI header
         run: |
           mkdir -p /tmp/jni-win32
-          cat > /tmp/jni-win32/jni_md.h << 'JNIEOF'
-          #define JNIEXPORT __declspec(dllexport)
-          #define JNIIMPORT __declspec(dllimport)
-          #define JNICALL __stdcall
-          typedef long jint;
-          typedef long long jlong;
-          typedef signed char jbyte;
-JNIEOF
+          echo '#define JNIEXPORT __declspec(dllexport)' > /tmp/jni-win32/jni_md.h
+          echo '#define JNIIMPORT __declspec(dllimport)' >> /tmp/jni-win32/jni_md.h
+          echo '#define JNICALL __stdcall' >> /tmp/jni-win32/jni_md.h
+          echo 'typedef long jint;' >> /tmp/jni-win32/jni_md.h
+          echo 'typedef long long jlong;' >> /tmp/jni-win32/jni_md.h
+          echo 'typedef signed char jbyte;' >> /tmp/jni-win32/jni_md.h
 
       - name: Build (cross-compile)
         env:
