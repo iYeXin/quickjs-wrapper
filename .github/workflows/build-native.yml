@@ -143,7 +143,7 @@ jobs:
                 -DCMAKE_CXX_COMPILER=x86_64-w64-mingw32-g++ \
                 -DCMAKE_C_FLAGS="-O2 -ffunction-sections -fdata-sections" \
                 -DCMAKE_CXX_FLAGS="-O2 -ffunction-sections -fdata-sections" \
-                -DCMAKE_SHARED_LINKER_FLAGS="-static-libgcc -static-libstdc++ -static -lwinpthread -Wl,--gc-sections -Wl,--strip-all" \
+                -DCMAKE_SHARED_LINKER_FLAGS="-static-libgcc -static-libstdc++ -static -Wl,--gc-sections -Wl,--strip-all" \
                 -DCMAKE_FIND_ROOT_PATH=/usr/x86_64-w64-mingw32 \
                 -G Ninja -S src/main -B build
           cmake --build build -j $(nproc)

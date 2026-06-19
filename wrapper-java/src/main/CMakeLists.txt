@@ -16,6 +16,9 @@ add_library( # Sets the name of the library.
 
 
 
+find_package(Threads REQUIRED)
+target_link_libraries(quickjs-java-wrapper PRIVATE Threads::Threads)
+
 include_directories($ENV{JAVA_HOME}/include/)
 
 if(DEFINED ENV{JAVA_PLATFORM_INCLUDE} AND NOT "$ENV{JAVA_PLATFORM_INCLUDE}" STREQUAL "")
