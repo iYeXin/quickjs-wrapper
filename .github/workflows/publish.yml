@@ -15,65 +15,38 @@ jobs:
             os: ubuntu-24.04
             artifact: native-linux-x86_64
             lib_name: libquickjs-java-wrapper.so
-            setup: ""
-            cmake_system: ""
-            cc: gcc
-            cxx: g++
             c_flags: "-O2 -flto -ffunction-sections -fdata-sections"
             cxx_flags: "-O2 -flto -ffunction-sections -fdata-sections"
             link_flags: "-Wl,--gc-sections -Wl,--strip-all"
-            cmake_generator: "Ninja"
-            parallel_cmd: "nproc"
-            find_root: ""
-            platform_include: ""
+            parallel: nproc
 
           - name: macos-x86_64
             os: macos-14
             artifact: native-macos-x86_64
             lib_name: libquickjs-java-wrapper.dylib
-            setup: ""
-            cmake_system: ""
-            cc: gcc
-            cxx: g++
             c_flags: "-O2 -flto -ffunction-sections -fdata-sections"
             cxx_flags: "-O2 -flto -ffunction-sections -fdata-sections"
             link_flags: "-Wl,--gc-sections"
-            cmake_generator: "Ninja"
-            parallel_cmd: "sysctl -n hw.logicalcpu"
-            find_root: ""
-            platform_include: ""
+            parallel: sysctl -n hw.logicalcpu
 
           - name: macos-arm64
             os: macos-15
             artifact: native-macos-arm64
             lib_name: libquickjs-java-wrapper.dylib
-            setup: ""
-            cmake_system: ""
-            cc: gcc
-            cxx: g++
             c_flags: "-Os -flto -ffunction-sections -fdata-sections"
             cxx_flags: "-Os -flto -ffunction-sections -fdata-sections"
             link_flags: "-Wl,--gc-sections"
-            cmake_generator: "Ninja"
-            parallel_cmd: "sysctl -n hw.logicalcpu"
-            find_root: ""
-            platform_include: ""
+            parallel: sysctl -n hw.logicalcpu
 
           - name: windows
             os: ubuntu-24.04
             artifact: native-windows-x86_64
             lib_name: libquickjs-java-wrapper.dll
-            setup: "cross"
-            cmake_system: "-DCMAKE_SYSTEM_NAME=Windows -DCMAKE_FIND_ROOT_PATH=/usr/x86_64-w64-mingw32"
-            cc: x86_64-w64-mingw32-gcc
-            cxx: x86_64-w64-mingw32-g++
-            c_flags: "-O2 -flto -ffunction-sections -fdata-sections"
-            cxx_flags: "-O2 -flto -ffunction-sections -fdata-sections"
-            link_flags: "-static -Wl,--gc-sections -Wl,--strip-all"
-            cmake_generator: "Ninja"
-            parallel_cmd: "nproc"
-            find_root: ""
-            platform_include: "prepare-jni"
+            c_flags: "-O2 -ffunction-sections -fdata-sections"
+            cxx_flags: "-O2 -ffunction-sections -fdata-sections"
+            link_flags: "-static-libgcc -static-libstdc++ -static -Wl,--gc-sections -Wl,--strip-all"
+            parallel: nproc
+            is_cross: true
 
     runs-on: ${{ matrix.os }}
     steps:
@@ -87,43 +60,39 @@ jobs:
           java-version: 21
 
       - name: Install MinGW cross-compiler
-        if: matrix.setup == 'cross'
+        if: matrix.is_cross
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq gcc-mingw-w64-x86-64 g++-mingw-w64-x86-64 mingw-w64-x86_64-dev ninja-build
 
       - name: Prepare Windows JNI header
-        if: matrix.platform_include == 'prepare-jni'
+        if: matrix.is_cross
         run: |
           mkdir -p /tmp/jni-win32
           echo '#define JNIEXPORT __declspec(dllexport)' > /tmp/jni-win32/jni_md.h
           echo '#define JNIIMPORT __declspec(dllimport)' >> /tmp/jni-win32/jni_md.h
           echo '#define JNICALL __stdcall' >> /tmp/jni-win32/jni_md.h
-          echo 'typedef long jint;' >> /tmp/jni-win32/jni_md.h
+          echo 'typedef int jint;' >> /tmp/jni-win32/jni_md.h
           echo 'typedef long long jlong;' >> /tmp/jni-win32/jni_md.h
           echo 'typedef signed char jbyte;' >> /tmp/jni-win32/jni_md.h
 
       - name: Build
         env:
-          JAVA_PLATFORM_INCLUDE: ${{ matrix.platform_include == 'prepare-jni' && '/tmp/jni-win32' || '' }}
+          JAVA_PLATFORM_INCLUDE: ${{ matrix.is_cross && '/tmp/jni-win32' || '' }}
         run: |
           cd wrapper-java
           cmake -DCMAKE_BUILD_TYPE=MinSizeRel \
-                ${{ matrix.cmake_system }} \
-                -DCMAKE_C_COMPILER=${{ matrix.cc }} \
-                -DCMAKE_CXX_COMPILER=${{ matrix.cxx }} \
-                -DCMAKE_AR=${{ matrix.cc }}-ar \
-                -DCMAKE_RANLIB=${{ matrix.cc }}-ranlib \
+                ${{ matrix.is_cross && '-DCMAKE_SYSTEM_NAME=Windows -DCMAKE_C_COMPILER=x86_64-w64-mingw32-gcc -DCMAKE_CXX_COMPILER=x86_64-w64-mingw32-g++ -DCMAKE_FIND_ROOT_PATH=/usr/x86_64-w64-mingw32' || '' }} \
                 -DCMAKE_C_FLAGS="${{ matrix.c_flags }}" \
                 -DCMAKE_CXX_FLAGS="${{ matrix.cxx_flags }}" \
                 -DCMAKE_SHARED_LINKER_FLAGS="${{ matrix.link_flags }}" \
-                ${{ matrix.find_root }} \
-                -G "${{ matrix.cmake_generator }}" -S src/main -B build
-          cmake --build build -j $(${{ matrix.parallel_cmd }})
+                -G Ninja -S src/main -B build
+          cmake --build build -j $(${{ matrix.parallel }})
 
       - name: Strip
-        if: matrix.name == 'windows'
+        if: matrix.is_cross
         run: x86_64-w64-mingw32-strip --strip-all wrapper-java/build/${{ matrix.lib_name }}
+        continue-on-error: true
 
       - uses: actions/upload-artifact@v4
         with:
