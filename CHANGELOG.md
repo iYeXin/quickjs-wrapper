@@ -1,5 +1,24 @@
 # Change Log
 
+## 3.5.0 *(2026-06-19)*
+
+### Breaking Changes
+- Removed extra `libwinpthread-1.dll` bundling — Windows native DLL is now fully statically linked, no runtime dependency needed
+- `QuickJSNativeLoader` no longer extracts `libwinpthread-1.dll` from JAR resources
+
+### Infrastructure
+- **Windows cross-compiled from Linux** via MinGW-w64 — replaces MSYS2/MinGW on `windows-2025` runner, reducing CI time from ~10min to ~3min
+- **Fully static Windows DLL** — `-static -static-libgcc -static-libstdc++` eliminates all external DLL dependencies
+- **macOS linker** switched from `-Wl,--gc-sections` (GNU ld) to `-Wl,-dead_strip` (Apple ld64) for compatibility
+- **CMake Threads** — `find_package(Threads REQUIRED)` for portable pthread linkage across all platforms
+- **publish.yml** — native libs are now embedded into platform-specific JARs before Gradle assembly, enabling auto-loading from classpath
+- **JNI cross-compilation** — `JAVA_PLATFORM_INCLUDE` env var for supplying platform-specific `jni_md.h` when cross-compiling
+
+### Documentation
+- `CMakeLists.txt` documents that `quickjs-libc.c` (std.* / os.* modules) is intentionally excluded — Yeow runs inside JVM and provides all I/O through Java
+
+---
+
 ## 3.4.0 *(2026-05-01)*
 
 ### Breaking Changes
