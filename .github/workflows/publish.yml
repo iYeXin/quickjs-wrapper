@@ -44,7 +44,7 @@ jobs:
             lib_name: libquickjs-java-wrapper.dll
             c_flags: "-O2 -ffunction-sections -fdata-sections"
             cxx_flags: "-O2 -ffunction-sections -fdata-sections"
-            link_flags: "-static-libgcc -static-libstdc++ -static -Wl,--gc-sections -Wl,--strip-all"
+            link_flags: "-static-libgcc -static-libstdc++ -static -lwinpthread -Wl,--gc-sections -Wl,--strip-all"
             parallel: nproc
             is_cross: true
 
