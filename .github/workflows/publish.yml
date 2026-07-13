@@ -133,6 +133,20 @@ jobs:
           cp native-dist/native-macos-arm64/* src/main/resources/native/macos-arm64/ 2>/dev/null || true
           cp native-dist/native-windows-x86_64/* src/main/resources/native/windows-x86_64/ 2>/dev/null || true
 
+      - name: Copy matching MinGW runtime DLLs
+        run: |
+          # Copy libwinpthread-1.dll from the cross-compiler sysroot to match the built DLL
+          if [ -f /usr/x86_64-w64-mingw32/lib/libwinpthread-1.dll ]; then
+            cp /usr/x86_64-w64-mingw32/lib/libwinpthread-1.dll src/main/resources/native/windows-x86_64/
+            echo "Copied matching libwinpthread-1.dll from cross-compiler"
+          fi
+          # Also copy any other MinGW runtime DLLs needed
+          for dll in libgcc_s_seh-1.dll libstdc++-6.dll; do
+            if [ -f /usr/x86_64-w64-mingw32/lib/$dll ]; then
+              cp /usr/x86_64-w64-mingw32/lib/$dll src/main/resources/native/windows-x86_64/ 2>/dev/null || true
+            fi
+          done
+
       - uses: gradle/gradle-build-action@v2
 
       - name: Build JARs

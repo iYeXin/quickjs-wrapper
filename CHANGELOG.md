@@ -5,7 +5,7 @@
 ### Bug Fixes
 - **Re-added libwinpthread-1.dll extraction** — 3.5.0 removed `libwinpthread-1.dll` bundling claiming fully static linkage, but `-static` does not cover MinGW's pthread/winthread layer. `QuickJSNativeLoader` now copies `libwinpthread-1.dll` alongside the main DLL before loading, restoring cross-platform compatibility.
 - **Include actual error cause in native load failure** — error message now shows whether the failure is due to missing classpath resource, `UnsatisfiedLinkError` (with detail), extraction error, or unsupported platform.
-- **Copy all common MinGW runtime DLLs** — `libgcc_s_seh-1.dll` and `libstdc++-6.dll` are also copied alongside `libwinpthread-1.dll` to resolve "Can't find dependent libraries" errors.
+- **Copy matching MinGW runtime DLLs at CI time** — publish workflow now copies `libwinpthread-1.dll` (and `libgcc_s_seh-1.dll`, `libstdc++-6.dll` if present) from the cross-compiler sysroot into the JAR resources, ensuring the bundled runtime DLLs match the compiled main DLL.
 
 ### Infrastructure
 - `copyDependencies()` helper in `QuickJSNativeLoader` for bundling platform-specific dependency DLLs at load time
