@@ -1,5 +1,15 @@
 # Change Log
 
+## 3.5.1 *(2026-07-13)*
+
+### Bug Fixes
+- **Re-added libwinpthread-1.dll extraction** — 3.5.0 removed `libwinpthread-1.dll` bundling claiming fully static linkage, but `-static` does not cover MinGW's pthread/winthread layer. `QuickJSNativeLoader` now copies `libwinpthread-1.dll` alongside the main DLL before loading, restoring cross-platform compatibility.
+
+### Infrastructure
+- `copyDependencies()` helper in `QuickJSNativeLoader` for bundling platform-specific dependency DLLs at load time
+
+---
+
 ## 3.5.0 *(2026-06-19)*
 
 ### Breaking Changes
