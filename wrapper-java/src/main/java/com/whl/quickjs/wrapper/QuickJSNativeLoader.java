@@ -10,9 +10,7 @@ final class QuickJSNativeLoader {
 
     private QuickJSNativeLoader() {}
 
-    static boolean isLoaded() {
-        return loaded;
-    }
+    static boolean isLoaded() { return loaded; }
 
     static synchronized void load() {
         if (loaded) return;
@@ -22,53 +20,62 @@ final class QuickJSNativeLoader {
             System.loadLibrary(LIB_NAME);
             loaded = true;
             return;
-        } catch (UnsatisfiedLinkError ignored) {
-        }
+        } catch (UnsatisfiedLinkError ignored) {}
 
         // 2. Try bundled native lib from classpath
         String platform = detectPlatform();
         if (platform != null) {
-            String libPath = "native/" + platform + "/" + mapLibName(platform);
-            try (InputStream is = QuickJSNativeLoader.class.getClassLoader().getResourceAsStream(libPath)) {
+            String dir = "native/" + platform + "/";
+            String libName = mapLibName(platform);
+            try (InputStream is = QuickJSNativeLoader.class.getClassLoader().getResourceAsStream(dir + libName)) {
                 if (is != null) {
                     Path tempDir = Files.createTempDirectory("quickjs-java-wrapper-");
                     tempDir.toFile().deleteOnExit();
 
-                    Path tempFile = tempDir.resolve(mapLibName(platform));
-                    Files.copy(is, tempFile, StandardCopyOption.REPLACE_EXISTING);
-                    System.load(tempFile.toAbsolutePath().toString());
+                    Path libFile = tempDir.resolve(libName);
+                    Files.copy(is, libFile, StandardCopyOption.REPLACE_EXISTING);
+                    libFile.toFile().deleteOnExit();
+
+                    // Copy platform dependencies (e.g. libwinpthread-1.dll for MinGW-w64)
+                    copyDependencies(platform, dir, tempDir);
+
+                    System.load(libFile.toAbsolutePath().toString());
                     loaded = true;
                     return;
                 }
-            } catch (IOException | UnsatisfiedLinkError ignored) {
-            }
+            } catch (IOException | UnsatisfiedLinkError ignored) {}
         }
 
         throw new QuickJSException(
-            "Failed to load native library '" + mapLibName(detectPlatform()) + "'. " +
+            "Failed to load native library for platform '" + detectPlatform() + "'. " +
+            "Expected classpath resource: native/" + detectPlatform() + "/" + mapLibName(detectPlatform()) + ". " +
             "Make sure the native library is on java.library.path or bundled in the JAR."
         );
+    }
+
+    private static void copyDependencies(String platform, String dir, Path tempDir) {
+        if (!platform.startsWith("windows")) return;
+        String[] deps = {"libwinpthread-1.dll"};
+        for (String dep : deps) {
+            try (InputStream dis = QuickJSNativeLoader.class.getClassLoader().getResourceAsStream(dir + dep)) {
+                if (dis != null) {
+                    Path depFile = tempDir.resolve(dep);
+                    Files.copy(dis, depFile, StandardCopyOption.REPLACE_EXISTING);
+                    depFile.toFile().deleteOnExit();
+                }
+            } catch (Exception ignored) {}
+        }
     }
 
     private static String detectPlatform() {
         String os = System.getProperty("os.name", "").toLowerCase();
         String arch = System.getProperty("os.arch", "").toLowerCase();
-
-        if (arch.contains("amd64") || arch.contains("x86_64") || arch.contains("x64")) {
-            arch = "x86_64";
-        } else if (arch.contains("aarch64") || arch.contains("arm64")) {
-            arch = "arm64";
-        } else {
-            return null;
-        }
-
-        if (os.contains("win")) {
-            return "windows-" + arch;
-        } else if (os.contains("mac") || os.contains("darwin")) {
-            return "macos-" + arch;
-        } else if (os.contains("nux") || os.contains("nix")) {
-            return "linux-" + arch;
-        }
+        if (arch.contains("amd64") || arch.contains("x86_64") || arch.contains("x64")) arch = "x86_64";
+        else if (arch.contains("aarch64") || arch.contains("arm64")) arch = "arm64";
+        else return null;
+        if (os.contains("win")) return "windows-" + arch;
+        if (os.contains("mac") || os.contains("darwin")) return "macos-" + arch;
+        if (os.contains("nux") || os.contains("nix")) return "linux-" + arch;
         return null;
     }
 
@@ -77,12 +84,5 @@ final class QuickJSNativeLoader {
         if (platform.startsWith("windows")) return "lib" + LIB_NAME + ".dll";
         if (platform.startsWith("macos")) return "lib" + LIB_NAME + ".dylib";
         return "lib" + LIB_NAME + ".so";
-    }
-
-    private static String libExt(String platform) {
-        if (platform == null) return "";
-        if (platform.startsWith("windows")) return ".dll";
-        if (platform.startsWith("macos")) return ".dylib";
-        return ".so";
     }
 }
