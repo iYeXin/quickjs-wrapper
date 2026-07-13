@@ -122,6 +122,9 @@ jobs:
           pattern: native-*
           path: native-dist
 
+      - name: Install MinGW tools for DLL inspection
+        run: sudo apt-get install -y -qq binutils-mingw-w64-x86-64
+
       - name: Embed native libs into JAR resources
         run: |
           mkdir -p src/main/resources/native/linux-x86_64
@@ -135,16 +138,31 @@ jobs:
 
       - name: Copy matching MinGW runtime DLLs
         run: |
-          # Copy libwinpthread-1.dll from the cross-compiler sysroot to match the built DLL
-          if [ -f /usr/x86_64-w64-mingw32/lib/libwinpthread-1.dll ]; then
-            cp /usr/x86_64-w64-mingw32/lib/libwinpthread-1.dll src/main/resources/native/windows-x86_64/
-            echo "Copied matching libwinpthread-1.dll from cross-compiler"
-          fi
-          # Also copy any other MinGW runtime DLLs needed
-          for dll in libgcc_s_seh-1.dll libstdc++-6.dll; do
-            if [ -f /usr/x86_64-w64-mingw32/lib/$dll ]; then
-              cp /usr/x86_64-w64-mingw32/lib/$dll src/main/resources/native/windows-x86_64/ 2>/dev/null || true
-            fi
+          WIN_DIR=src/main/resources/native/windows-x86_64
+          # Dump DLL dependencies for debugging
+          echo "=== DLL dependencies ==="
+          x86_64-w64-mingw32-objdump -p $WIN_DIR/libquickjs-java-wrapper.dll | grep -i "DLL Name" || true
+          echo "=== Sysroot DLLs ==="
+          ls /usr/x86_64-w64-mingw32/lib/*.dll 2>/dev/null || true
+
+          # Copy all matching runtime DLLs from the cross-compiler sysroot
+          for dll in $(x86_64-w64-mingw32-objdump -p $WIN_DIR/libquickjs-java-wrapper.dll 2>/dev/null | grep -i "DLL Name" | awk '{print $3}'); do
+            # Skip Windows system DLLs
+            case "$dll" in
+              KERNEL32*|USER32*|GDI32*|COMDLG32*|ADVAPI32*|SHELL32*|OLE32*|OLEAUT32*|RPCRT4*|IMM32*|WINMM*|WS2_32*|MSVCRT*|VCRUNTIME*|api-ms-win-*|ext-ms-win-*)
+                echo "Skipping system DLL: $dll"
+                ;;
+              *)
+                SYSROOT=/usr/x86_64-w64-mingw32/lib
+                FOUND=$(find $SYSROOT -name "$dll" 2>/dev/null | head -1)
+                if [ -n "$FOUND" ]; then
+                  cp "$FOUND" "$WIN_DIR/"
+                  echo "Copied: $dll"
+                else
+                  echo "WARNING: $dll not found in sysroot"
+                fi
+                ;;
+            esac
           done
 
       - uses: gradle/gradle-build-action@v2
