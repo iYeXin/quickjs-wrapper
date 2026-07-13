@@ -7,10 +7,12 @@ final class QuickJSNativeLoader {
 
     private static final String LIB_NAME = "quickjs-java-wrapper";
     private static volatile boolean loaded;
+    private static volatile String loadError;
 
     private QuickJSNativeLoader() {}
 
     static boolean isLoaded() { return loaded; }
+    static String getLoadError() { return loadError; }
 
     static synchronized void load() {
         if (loaded) return;
@@ -20,14 +22,17 @@ final class QuickJSNativeLoader {
             System.loadLibrary(LIB_NAME);
             loaded = true;
             return;
-        } catch (UnsatisfiedLinkError ignored) {}
+        } catch (UnsatisfiedLinkError e) {
+            loadError = "java.library.path: " + e.getMessage();
+        }
 
         // 2. Try bundled native lib from classpath
         String platform = detectPlatform();
         if (platform != null) {
             String dir = "native/" + platform + "/";
             String libName = mapLibName(platform);
-            try (InputStream is = QuickJSNativeLoader.class.getClassLoader().getResourceAsStream(dir + libName)) {
+            String resourcePath = dir + libName;
+            try (InputStream is = QuickJSNativeLoader.class.getClassLoader().getResourceAsStream(resourcePath)) {
                 if (is != null) {
                     Path tempDir = Files.createTempDirectory("quickjs-java-wrapper-");
                     tempDir.toFile().deleteOnExit();
@@ -36,19 +41,29 @@ final class QuickJSNativeLoader {
                     Files.copy(is, libFile, StandardCopyOption.REPLACE_EXISTING);
                     libFile.toFile().deleteOnExit();
 
-                    // Copy platform dependencies (e.g. libwinpthread-1.dll for MinGW-w64)
                     copyDependencies(platform, dir, tempDir);
 
-                    System.load(libFile.toAbsolutePath().toString());
-                    loaded = true;
-                    return;
+                    try {
+                        System.load(libFile.toAbsolutePath().toString());
+                        loaded = true;
+                        return;
+                    } catch (UnsatisfiedLinkError e) {
+                        loadError = "System.load(" + libFile + "): " + e.getMessage();
+                    }
+                } else {
+                    loadError = "Resource not found on classpath: " + resourcePath;
                 }
-            } catch (IOException | UnsatisfiedLinkError ignored) {}
+            } catch (IOException e) {
+                loadError = "Extraction failed: " + e.getMessage();
+            }
+        } else {
+            loadError = "Unsupported platform: " + System.getProperty("os.name") + " " + System.getProperty("os.arch");
         }
 
         throw new QuickJSException(
             "Failed to load native library for platform '" + detectPlatform() + "'. " +
-            "Expected classpath resource: native/" + detectPlatform() + "/" + mapLibName(detectPlatform()) + ". " +
+            "Expected: native/" + detectPlatform() + "/" + mapLibName(detectPlatform()) + ". " +
+            (loadError != null ? "Cause: " + loadError + ". " : "") +
             "Make sure the native library is on java.library.path or bundled in the JAR."
         );
     }
