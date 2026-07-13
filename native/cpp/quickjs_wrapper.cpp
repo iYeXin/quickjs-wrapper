@@ -53,40 +53,87 @@ static void tryToTriggerOnError(JSContext *ctx, JSValueConst *error)
     JS_FreeValue(ctx, global);
 }
 
+static string jsonEscape(const char *s) {
+    if (!s) return "\"\"";
+    string r;
+    for (const char *p = s; *p; p++) {
+        switch (*p) {
+            case '\\': r += "\\\\"; break;
+            case '"':  r += "\\\""; break;
+            case '\n': r += "\\n"; break;
+            case '\r': r += "\\r"; break;
+            case '\t': r += "\\t"; break;
+            default:   r += *p;
+        }
+    }
+    return "\"" + r + "\"";
+}
+
 string QuickJSWrapper::getJSErrorStr(JSContext *ctx, JSValueConst error)
 {
     JSValue val;
     bool is_error;
     is_error = JS_IsError(ctx, error);
-    string jsException;
+    string result = "{";
+
     if (is_error)
     {
         tryToTriggerOnError(ctx, &error);
 
-        JSValue message = JS_GetPropertyStr(ctx, error, "message");
-        const char *msg_str = JS_ToCString(ctx, message);
-        jsException += msg_str;
-        JS_FreeCString(ctx, msg_str);
-        JS_FreeValue(ctx, message);
-
-        val = JS_GetPropertyStr(ctx, error, "stack");
-        if (!JS_IsUndefined(val))
-        {
-            jsException += "\n";
-
-            const char *stack_str = JS_ToCString(ctx, val);
-            jsException += stack_str;
-            JS_FreeCString(ctx, stack_str);
+        // message
+        val = JS_GetPropertyStr(ctx, error, "message");
+        if (!JS_IsUndefined(val)) {
+            const char *s = JS_ToCString(ctx, val);
+            result += "\"message\":" + jsonEscape(s) + ",";
+            JS_FreeCString(ctx, s);
         }
         JS_FreeValue(ctx, val);
+
+        // fileName
+        val = JS_GetPropertyStr(ctx, error, "fileName");
+        if (!JS_IsUndefined(val)) {
+            const char *s = JS_ToCString(ctx, val);
+            result += "\"fileName\":" + jsonEscape(s) + ",";
+            JS_FreeCString(ctx, s);
+        }
+        JS_FreeValue(ctx, val);
+
+        // lineNumber
+        val = JS_GetPropertyStr(ctx, error, "lineNumber");
+        if (!JS_IsUndefined(val)) {
+            double n; JS_ToFloat64(ctx, &n, val);
+            result += "\"lineNumber\":" + std::to_string((int)n) + ",";
+        }
+        JS_FreeValue(ctx, val);
+
+        // columnNumber
+        val = JS_GetPropertyStr(ctx, error, "columnNumber");
+        if (!JS_IsUndefined(val)) {
+            double n; JS_ToFloat64(ctx, &n, val);
+            result += "\"columnNumber\":" + std::to_string((int)n) + ",";
+        }
+        JS_FreeValue(ctx, val);
+
+        // stack
+        val = JS_GetPropertyStr(ctx, error, "stack");
+        if (!JS_IsUndefined(val)) {
+            const char *s = JS_ToCString(ctx, val);
+            result += "\"stack\":" + jsonEscape(s) + ",";
+            JS_FreeCString(ctx, s);
+        }
+        JS_FreeValue(ctx, val);
+
+        result += "\"jsError\":true";
     }
     else
     {
-        const char *error_str = JS_ToCString(ctx, error);
-        jsException += error_str;
-        JS_FreeCString(ctx, error_str);
+        const char *s = JS_ToCString(ctx, error);
+        result += "\"message\":" + jsonEscape(s) + ",\"jsError\":false";
+        JS_FreeCString(ctx, s);
     }
-    return jsException;
+
+    result += "}";
+    return result;
 }
 
 string QuickJSWrapper::getJSErrorStr(JSContext *ctx)
