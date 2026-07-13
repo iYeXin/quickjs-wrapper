@@ -70,8 +70,9 @@ final class QuickJSNativeLoader {
 
     private static void copyDependencies(String platform, String dir, Path tempDir) {
         if (!platform.startsWith("windows")) return;
-        String[] deps = {"libwinpthread-1.dll"};
-        for (String dep : deps) {
+        // Copy all .dll files from the native directory to support any runtime dependencies
+        String[] known = {"libwinpthread-1.dll", "libgcc_s_seh-1.dll", "libstdc++-6.dll"};
+        for (String dep : known) {
             try (InputStream dis = QuickJSNativeLoader.class.getClassLoader().getResourceAsStream(dir + dep)) {
                 if (dis != null) {
                     Path depFile = tempDir.resolve(dep);
