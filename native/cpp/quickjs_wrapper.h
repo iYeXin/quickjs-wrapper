@@ -111,6 +111,7 @@ public:
                                    int argc, JSValueConst *argv);
     static JSValue yeowReadBuffer(JSContext *ctx, JSValueConst this_val,
                                   int argc, JSValueConst *argv);
+    static uint64_t fnv1a(const char *s, size_t len);
 };
 
 #endif // QUICKJS_TEST_CONTEXT_WRAPPER_H

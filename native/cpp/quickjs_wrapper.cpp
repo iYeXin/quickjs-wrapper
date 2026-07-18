@@ -1094,135 +1094,239 @@ jstring QuickJSWrapper::toJavaString(JNIEnv *env, JSValue value) const
 void QuickJSWrapper::initBuffer(void *addr, uint32_t size) {
     bufPtr = addr;
     bufSize = size;
-    lengthAtom = JS_NewAtom(context, "length");
 
-    // Register $_writeBuffer as a native JS function
     JSValue global = JS_GetGlobalObject(context);
-    JSValue wb = JS_NewCFunction(context, yeowWriteBuffer, "$_writeBuffer", 3);
+    JSValue wb = JS_NewCFunction(context, yeowWriteBuffer, "$_writeBuffer", 1);
     JS_SetPropertyStr(context, global, "$_writeBuffer", wb);
 
-    // Register $_readBuffer as a native JS function
     JSValue rb = JS_NewCFunction(context, yeowReadBuffer, "$_readBuffer", 0);
     JS_SetPropertyStr(context, global, "$_readBuffer", rb);
 
     JS_FreeValue(context, global);
 }
 
-static uint8_t readUint8(void *buf, uint32_t off) {
-    return *(uint8_t *)((uint8_t *)buf + off);
+static uint8_t readU8(void *buf, uint32_t off) { return *(uint8_t *)((uint8_t *)buf + off); }
+static void writeU8(void *buf, uint32_t off, uint8_t v) { *(uint8_t *)((uint8_t *)buf + off) = v; }
+static double readF64(void *buf, uint32_t off) { double v; memcpy(&v, (uint8_t *)buf + off, 8); return v; }
+static void writeF64(void *buf, uint32_t off, double v) { memcpy((uint8_t *)buf + off, &v, 8); }
+
+uint64_t QuickJSWrapper::fnv1a(const char *s, size_t len) {
+    uint64_t h = 0xCBF29CE484222325ULL;
+    for (size_t i = 0; i < len; i++)
+        h = (h ^ (unsigned char)s[i]) * 0x100000001B3ULL;
+    return h;
 }
 
-static void writeUint8(void *buf, uint32_t off, uint8_t val) {
-    *(uint8_t *)((uint8_t *)buf + off) = val;
-}
+#define HT_SIZE  17
+#define HT_OFF   0
+#define NUM_OFF  153
+#define STR_OFF  217
+#define BOL_OFF  2025
+#define CNT_OFF  2030
+#define MAX_NUM  8
+#define MAX_STR  4
+#define MAX_BOL  5
+#define STR_MAX  450
 
-static double readDouble(void *buf, uint32_t off) {
-    double val;
-    memcpy(&val, (uint8_t *)buf + off, 8);
-    return val;
-}
+// pos encoding: high 2 bits = type (0=num,1=str,2=bol), low 6 bits = slot index
+static uint8_t makePos(int type, int idx) { return (uint8_t)((type << 6) | idx); }
+static int posType(uint8_t p) { return (p >> 6) & 3; }
+static int posIdx(uint8_t p) { return p & 0x3F; }
 
-static void writeDouble(void *buf, uint32_t off, double val) {
-    memcpy((uint8_t *)buf + off, &val, 8);
-}
-
-// $_writeBuffer(nums, strs, bools) → true/false
+// $_writeBuffer(obj) → true/false
 JSValue QuickJSWrapper::yeowWriteBuffer(JSContext *ctx, JSValueConst this_val,
                                          int argc, JSValueConst *argv) {
     auto *self = (QuickJSWrapper *)JS_GetRuntimeOpaque(JS_GetRuntime(ctx));
     void *buf = self->bufPtr;
-    uint32_t size = self->bufSize;
-    if (!buf) return JS_FALSE;
+    if (!buf || argc < 1) return JS_FALSE;
 
-    JSAtom lenAtom = self->lengthAtom;
-    uint32_t numCount = 0, strCount = 0, boolCount = 0;
-    if (argc > 0) {
-        JSValue v = JS_GetProperty(ctx, argv[0], lenAtom);
-        if (JS_IsNumber(v)) numCount = (uint32_t)JS_VALUE_GET_INT(v);
+    // Zero out hash table
+    memset(buf, 0, HT_SIZE * 9);
+
+    // Get keys array
+    JSValue keys = JS_GetPropertyStr(ctx, argv[0], "length");
+    uint32_t keyCount = JS_IsNumber(keys) ? (uint32_t)JS_VALUE_GET_INT(keys) : 0;
+    JS_FreeValue(ctx, keys);
+
+    keys = JS_GetPropertyStr(ctx, argv[0], "keys");
+    keys = JS_Call(ctx, keys, argv[0], 0, nullptr);
+    keys = JS_Call(ctx, keys, JS_UNDEFINED, 0, nullptr); // Array.from(keys()) via ...spread
+
+    // Actually get keys via Object.keys
+    JSValue g = JS_GetGlobalObject(ctx);
+    JSValue objKeysFn = JS_GetPropertyStr(ctx, g, "Object");
+    objKeysFn = JS_GetPropertyStr(ctx, objKeysFn, "keys");
+    keys = JS_Call(ctx, objKeysFn, JS_UNDEFINED, 1, &argv[0]);
+    JS_FreeValue(ctx, objKeysFn);
+    JS_FreeValue(ctx, g);
+
+    keyCount = JS_VALUE_GET_INT(JS_GetPropertyStr(ctx, keys, "length"));
+    if (keyCount > HT_SIZE) { JS_FreeValue(ctx, keys); return JS_FALSE; }
+
+    int nIdx = 0, sIdx = 0, bIdx = 0;
+
+    for (uint32_t i = 0; i < keyCount; i++) {
+        JSValue k = JS_GetPropertyUint32(ctx, keys, i);
+        const char *keyStr = JS_ToCString(ctx, k);
+        size_t keyLen = strlen(keyStr);
+        uint64_t hash = fnv1a(keyStr, keyLen);
+
+        JSValue v = JS_GetPropertyStr(ctx, argv[0], keyStr);
+        JS_FreeCString(ctx, keyStr);
+
+        int type = -1, idx = -1;
+
+        if (JS_IsNumber(v)) { type = 0;
+            if (nIdx >= MAX_NUM) { JS_FreeValue(ctx, v); JS_FreeValue(ctx, k); JS_FreeValue(ctx, keys); return JS_FALSE; }
+            double d; JS_ToFloat64(ctx, &d, v);
+            writeF64(buf, (uint32_t)(NUM_OFF + nIdx * 8), d);
+            idx = nIdx++;
+        } else if (JS_IsString(v)) {
+            size_t slen; const char *s = JS_ToCStringLen(ctx, &slen, v);
+            if (sIdx >= MAX_STR || slen > STR_MAX) { JS_FreeCString(ctx, s); JS_FreeValue(ctx, v); JS_FreeValue(ctx, k); JS_FreeValue(ctx, keys); return JS_FALSE; }
+            writeU8(buf, (uint32_t)(STR_OFF + sIdx * (2 + STR_MAX)), (uint8_t)((slen >> 8) & 0xFF));
+            writeU8(buf, (uint32_t)(STR_OFF + sIdx * (2 + STR_MAX) + 1), (uint8_t)(slen & 0xFF));
+            memcpy((uint8_t *)buf + STR_OFF + sIdx * (2 + STR_MAX) + 2, s, slen);
+            JS_FreeCString(ctx, s);
+            idx = sIdx++;
+        } else if (JS_IsBool(v)) {
+            if (bIdx >= MAX_BOL) { JS_FreeValue(ctx, v); JS_FreeValue(ctx, k); JS_FreeValue(ctx, keys); return JS_FALSE; }
+            writeU8(buf, (uint32_t)(BOL_OFF + bIdx), JS_ToBool(ctx, v) ? 1 : 0);
+            idx = bIdx++;
+        } else { JS_FreeValue(ctx, v); JS_FreeValue(ctx, k); JS_FreeValue(ctx, keys); return JS_FALSE; }
+
+        // Find empty slot in hash table
+        int slot = -1;
+        for (int j = 0; j < HT_SIZE; j++) {
+            uint64_t h = readF64(buf, (uint32_t)(HT_OFF + j * 9)); // read as double to get 8 bytes
+            // Re-read as uint64 via memcpy
+            uint64_t existing;
+            memcpy(&existing, (uint8_t *)buf + HT_OFF + j * 9, 8);
+            if (existing == 0) { slot = j; break; }
+        }
+        if (slot < 0) { JS_FreeValue(ctx, v); JS_FreeValue(ctx, k); JS_FreeValue(ctx, keys); return JS_FALSE; }
+
+        memcpy((uint8_t *)buf + HT_OFF + slot * 9, &hash, 8);
+        writeU8(buf, (uint32_t)(HT_OFF + slot * 9 + 8), makePos(type, idx));
         JS_FreeValue(ctx, v);
-    }
-    if (argc > 1) {
-        JSValue v = JS_GetProperty(ctx, argv[1], lenAtom);
-        if (JS_IsNumber(v)) strCount = (uint32_t)JS_VALUE_GET_INT(v);
-        JS_FreeValue(ctx, v);
-    }
-    if (argc > 2) {
-        JSValue v = JS_GetProperty(ctx, argv[2], lenAtom);
-        if (JS_IsNumber(v)) boolCount = (uint32_t)JS_VALUE_GET_INT(v);
-        JS_FreeValue(ctx, v);
+        JS_FreeValue(ctx, k);
     }
 
-    if (numCount > 8 || strCount > 4 || boolCount > 5) return JS_FALSE;
-    if (3 + 8 + 8 * numCount + (2 + 490) * strCount + boolCount > (int64_t)size) return JS_FALSE;
-
-    writeUint8(buf, 0, numCount);
-    writeUint8(buf, 1, strCount);
-    writeUint8(buf, 2, boolCount);
-
-    uint32_t off = 11;
-    for (uint32_t i = 0; i < numCount; i++) {
-        JSValue v = JS_GetPropertyUint32(ctx, argv[0], i);
-        double d; JS_ToFloat64(ctx, &d, v);
-        writeDouble(buf, off, d);
-        JS_FreeValue(ctx, v);
-        off += 8;
-    }
-    for (uint32_t i = numCount; i < 8; i++) { writeDouble(buf, off, NAN); off += 8; }
-
-    for (uint32_t i = 0; i < strCount; i++) {
-        JSValue v = JS_GetPropertyUint32(ctx, argv[1], i);
-        size_t len; const char *s = JS_ToCStringLen(ctx, &len, v);
-        if (len > 490) { JS_FreeCString(ctx, s); JS_FreeValue(ctx, v); return JS_FALSE; }
-        writeUint8(buf, off, (len >> 8) & 0xFF);
-        writeUint8(buf, off + 1, len & 0xFF);
-        memcpy((uint8_t *)buf + off + 2, s, len);
-        JS_FreeCString(ctx, s); JS_FreeValue(ctx, v);
-        off += 2 + len;
-    }
-
-    for (uint32_t i = 0; i < boolCount; i++) {
-        JSValue v = JS_GetPropertyUint32(ctx, argv[2], i);
-        writeUint8(buf, 2043 + i, JS_ToBool(ctx, v) ? 1 : 0);
-        JS_FreeValue(ctx, v);
-    }
-
+    writeU8(buf, CNT_OFF, (uint8_t)nIdx);
+    writeU8(buf, CNT_OFF + 1, (uint8_t)sIdx);
+    writeU8(buf, CNT_OFF + 2, (uint8_t)bIdx);
+    JS_FreeValue(ctx, keys);
     return JS_TRUE;
 }
 
-// $_readBuffer() → [number[], string[], boolean[]]
+// $_readBuffer() → {get:fn, has:fn, _hashTable:[], _nums:[], _strs:[], _bools:[]}
 JSValue QuickJSWrapper::yeowReadBuffer(JSContext *ctx, JSValueConst this_val,
                                         int argc, JSValueConst *argv) {
     auto *self = (QuickJSWrapper *)JS_GetRuntimeOpaque(JS_GetRuntime(ctx));
     void *buf = self->bufPtr;
     if (!buf) return JS_NULL;
 
-    uint32_t numCount = readUint8(buf, 0);
-    uint32_t strCount = readUint8(buf, 1);
-    uint32_t boolCount = readUint8(buf, 2);
+    // Build the script to create a result object with get/has methods
+    // We embed the raw data as literal arrays in the script
+    uint32_t nc = readU8(buf, CNT_OFF);
+    uint32_t sc = readU8(buf, CNT_OFF + 1);
+    uint32_t bc = readU8(buf, CNT_OFF + 2);
 
-    JSValue result = JS_NewArray(ctx);
-
-    JSValue nums = JS_NewArray(ctx);
-    for (uint32_t i = 0; i < numCount; i++) {
-        JS_SetPropertyUint32(ctx, nums, i, JS_NewFloat64(ctx, readDouble(buf, 11 + i * 8)));
+    // Read hash table
+    std::string numsArr = "[";
+    for (uint32_t i = 0; i < nc; i++) {
+        if (i > 0) numsArr += ",";
+        double d = readF64(buf, (uint32_t)(NUM_OFF + i * 8));
+        char buf64[64];
+        snprintf(buf64, sizeof(buf64), "%.17g", d);
+        numsArr += buf64;
     }
-    JS_SetPropertyUint32(ctx, result, 0, nums);
+    numsArr += "]";
 
-    JSValue strs = JS_NewArray(ctx);
-    uint32_t off = 75;
-    for (uint32_t i = 0; i < strCount; i++) {
-        uint32_t len = ((uint32_t)readUint8(buf, off) << 8) | readUint8(buf, off + 1);
-        off += 2;
-        JS_SetPropertyUint32(ctx, strs, i, JS_NewStringLen(ctx, (const char *)((uint8_t *)buf + off), len));
-        off += len;
+    std::string strsArr = "[";
+    for (uint32_t i = 0; i < sc; i++) {
+        if (i > 0) strsArr += ",";
+        uint32_t off = (uint32_t)(STR_OFF + i * (2 + STR_MAX));
+        uint32_t len = ((uint32_t)readU8(buf, off) << 8) | readU8(buf, off + 1);
+        strsArr += "\"";
+        // Escape string for JS literal
+        auto *data = (uint8_t *)buf + off + 2;
+        for (uint32_t j = 0; j < len; j++) {
+            char c = (char)data[j];
+            if (c == '"' || c == '\\') { strsArr += '\\'; strsArr += c; }
+            else if (c == '\n') strsArr += "\\n";
+            else if (c == '\r') strsArr += "\\r";
+            else if (c == '\t') strsArr += "\\t";
+            else if ((unsigned char)c < 32) { char bufE[8]; snprintf(bufE, 8, "\\x%02x", (unsigned char)c); strsArr += bufE; }
+            else strsArr += c;
+        }
+        strsArr += "\"";
     }
-    JS_SetPropertyUint32(ctx, result, 1, strs);
+    strsArr += "]";
 
-    JSValue bools = JS_NewArray(ctx);
-    for (uint32_t i = 0; i < boolCount; i++) {
-        JS_SetPropertyUint32(ctx, bools, i, JS_NewBool(ctx, readUint8(buf, 2043 + i)));
+    std::string boolsArr = "[";
+    for (uint32_t i = 0; i < bc; i++) {
+        if (i > 0) boolsArr += ",";
+        boolsArr += readU8(buf, (uint32_t)(BOL_OFF + i)) ? "true" : "false";
     }
-    JS_SetPropertyUint32(ctx, result, 2, bools);
+    boolsArr += "]";
 
+    // Build hash table array: [hash0,hash1,...]
+    std::string htArr = "[";
+    for (int i = 0; i < HT_SIZE; i++) {
+        if (i > 0) htArr += ",";
+        uint64_t h; memcpy(&h, (uint8_t *)buf + HT_OFF + i * 9, 8);
+        uint8_t p = readU8(buf, (uint32_t)(HT_OFF + i * 9 + 8));
+        // Encode as [hash, pos]
+        char bufH[32];
+        if (h == 0) { htArr += "0"; }
+        else {
+            // Use a string trick: encode as base-10 string for BigInt
+            // Actually for JS number-safe range check
+            if (h <= 0x1FFFFFFFFFFFFFULL) {
+                snprintf(bufH, 32, "%llu", (unsigned long long)h);
+                htArr += bufH;
+            } else {
+                // Use two-number encoding: high and low 32 bits
+                snprintf(bufH, 32, "[%u,%u]", (unsigned)(h >> 32), (unsigned)(h & 0xFFFFFFFF));
+                htArr += bufH;
+            }
+        }
+    }
+    htArr += "]";
+
+    // Build pos array
+    std::string posArr = "[";
+    for (int i = 0; i < HT_SIZE; i++) {
+        if (i > 0) posArr += ",";
+        uint8_t p = readU8(buf, (uint32_t)(HT_OFF + i * 9 + 8));
+        char bufP[8]; snprintf(bufP, 8, "%u", p);
+        posArr += bufP;
+    }
+    posArr += "]";
+
+    // Create result via eval
+    std::string script = "(()=>{";
+    script += "var _ht=" + htArr + ";";
+    script += "var _pos=" + posArr + ";";
+    script += "var _nums=" + numsArr + ";";
+    script += "var _strs=" + strsArr + ";";
+    script += "var _bools=" + boolsArr + ";";
+    script += "var C=" + std::to_string(HT_SIZE) + ";";
+    script += "var r={";
+    script += "_raw:[_nums,_strs,_bools],";
+    script += "get:function(k){";
+    script += "var h=0xCBF29CE484222325n;";
+    script += "for(var i=0;i<k.length;i++)h=BigInt.asUintN(64,(h^BigInt(k.charCodeAt(i)))*0x100000001B3n);";
+    script += "var hn=Number(h&0x1FFFFFFFFFFFFFn);";
+    script += "for(var i=0;i<C;i++){if(_ht[i]===0)continue;var m=_ht[i];if(typeof m==='number'?m===hn:m[0]===Number(h>>64n)&&m[1]===Number(h&0xFFFFFFFFn)){";
+    script += "var t=_pos[i]>>6;var idx=_pos[i]&0x3F;";
+    script += "if(t===0)return _nums[idx];if(t===1)return _strs[idx];return _bools[idx];}}return undefined;";
+    script += "},";
+    script += "has:function(k){return this.get(k)!==undefined;},";
+    script += "keys:function(){var ks=[];for(var i=0;i<C;i++)if(_ht[i]!==0)ks.push('?')return ks;}";
+    script += "};return r;})()";
+
+    JSValue result = JS_Eval(ctx, script.c_str(), script.length(), "<buf>", JS_EVAL_TYPE_GLOBAL);
     return result;
 }
