@@ -1,5 +1,12 @@
 # Change Log
 
+## 3.5.3 *(2026-07-15)*
+
+### Features
+- **Yeow buffer transport** — New `$_writeBuffer(nums, strs, bools)` and `$_readBuffer()` native JS functions for zero-copy task argument/result transfer via shared `DirectByteBuffer`. Combined with `nativeInitBuffer(context, buffer)` JNI API, enables Yeow's fast-task path that bypasses JSON serialization for simple parameter types.
+
+---
+
 ## 3.5.2 *(2026-07-13)*
 
 ### Features

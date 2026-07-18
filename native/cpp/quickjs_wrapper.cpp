@@ -1089,3 +1089,126 @@ jstring QuickJSWrapper::toJavaString(JNIEnv *env, JSValue value) const
 
     return result;
 }
+
+// ── Yeow buffer transport ─────────────────────────────────────────
+void QuickJSWrapper::initBuffer(void *addr, uint32_t size) {
+    bufPtr = addr;
+    bufSize = size;
+
+    // Register $_writeBuffer as a native JS function
+    JSValue global = JS_GetGlobalObject(context);
+    JSValue wb = JS_NewCFunction(context, yeowWriteBuffer, "$_writeBuffer", 3);
+    JS_SetPropertyStr(context, global, "$_writeBuffer", wb);
+
+    // Register $_readBuffer as a native JS function
+    JSValue rb = JS_NewCFunction(context, yeowReadBuffer, "$_readBuffer", 0);
+    JS_SetPropertyStr(context, global, "$_readBuffer", rb);
+
+    JS_FreeValue(context, global);
+}
+
+static uint8_t readUint8(void *buf, uint32_t off) {
+    return *(uint8_t *)((uint8_t *)buf + off);
+}
+
+static void writeUint8(void *buf, uint32_t off, uint8_t val) {
+    *(uint8_t *)((uint8_t *)buf + off) = val;
+}
+
+static double readDouble(void *buf, uint32_t off) {
+    double val;
+    memcpy(&val, (uint8_t *)buf + off, 8);
+    return val;
+}
+
+static void writeDouble(void *buf, uint32_t off, double val) {
+    memcpy((uint8_t *)buf + off, &val, 8);
+}
+
+// $_writeBuffer(nums, strs, bools) → true/false
+JSValue QuickJSWrapper::yeowWriteBuffer(JSContext *ctx, JSValueConst this_val,
+                                         int argc, JSValueConst *argv) {
+    auto *self = (QuickJSWrapper *)JS_GetRuntimeOpaque(JS_GetRuntime(ctx));
+    void *buf = self->bufPtr;
+    uint32_t size = self->bufSize;
+    if (!buf) return JS_FALSE;
+
+    uint32_t numCount = 0, strCount = 0, boolCount = 0;
+    if (argc > 0 && JS_IsArray(ctx, argv[0])) numCount = JS_VALUE_GET_INT(JS_GetPropertyStr(ctx, argv[0], "length"));
+    if (argc > 1 && JS_IsArray(ctx, argv[1])) strCount = JS_VALUE_GET_INT(JS_GetPropertyStr(ctx, argv[1], "length"));
+    if (argc > 2 && JS_IsArray(ctx, argv[2])) boolCount = JS_VALUE_GET_INT(JS_GetPropertyStr(ctx, argv[2], "length"));
+
+    if (numCount > 8 || strCount > 4 || boolCount > 5) return JS_FALSE;
+    if (3 + 8 + 8 * numCount + (2 + 490) * strCount + boolCount > (int64_t)size) return JS_FALSE;
+
+    writeUint8(buf, 0, numCount);
+    writeUint8(buf, 1, strCount);
+    writeUint8(buf, 2, boolCount);
+
+    uint32_t off = 11;
+    for (uint32_t i = 0; i < numCount; i++) {
+        JSValue v = JS_GetPropertyUint32(ctx, argv[0], i);
+        double d; JS_ToFloat64(ctx, &d, v);
+        writeDouble(buf, off, d);
+        JS_FreeValue(ctx, v);
+        off += 8;
+    }
+    for (uint32_t i = numCount; i < 8; i++) { writeDouble(buf, off, NAN); off += 8; }
+
+    for (uint32_t i = 0; i < strCount; i++) {
+        JSValue v = JS_GetPropertyUint32(ctx, argv[1], i);
+        size_t len; const char *s = JS_ToCStringLen(ctx, &len, v);
+        if (len > 490) { JS_FreeCString(ctx, s); JS_FreeValue(ctx, v); return JS_FALSE; }
+        writeUint8(buf, off, (len >> 8) & 0xFF);
+        writeUint8(buf, off + 1, len & 0xFF);
+        memcpy((uint8_t *)buf + off + 2, s, len);
+        JS_FreeCString(ctx, s); JS_FreeValue(ctx, v);
+        off += 2 + len;
+    }
+
+    for (uint32_t i = 0; i < boolCount; i++) {
+        JSValue v = JS_GetPropertyUint32(ctx, argv[2], i);
+        writeUint8(buf, 2043 + i, JS_ToBool(ctx, v) ? 1 : 0);
+        JS_FreeValue(ctx, v);
+    }
+
+    return JS_TRUE;
+}
+
+// $_readBuffer() → [number[], string[], boolean[]]
+JSValue QuickJSWrapper::yeowReadBuffer(JSContext *ctx, JSValueConst this_val,
+                                        int argc, JSValueConst *argv) {
+    auto *self = (QuickJSWrapper *)JS_GetRuntimeOpaque(JS_GetRuntime(ctx));
+    void *buf = self->bufPtr;
+    if (!buf) return JS_NULL;
+
+    uint32_t numCount = readUint8(buf, 0);
+    uint32_t strCount = readUint8(buf, 1);
+    uint32_t boolCount = readUint8(buf, 2);
+
+    JSValue result = JS_NewArray(ctx);
+
+    JSValue nums = JS_NewArray(ctx);
+    for (uint32_t i = 0; i < numCount; i++) {
+        JS_SetPropertyUint32(ctx, nums, i, JS_NewFloat64(ctx, readDouble(buf, 11 + i * 8)));
+    }
+    JS_SetPropertyUint32(ctx, result, 0, nums);
+
+    JSValue strs = JS_NewArray(ctx);
+    uint32_t off = 75;
+    for (uint32_t i = 0; i < strCount; i++) {
+        uint32_t len = ((uint32_t)readUint8(buf, off) << 8) | readUint8(buf, off + 1);
+        off += 2;
+        JS_SetPropertyUint32(ctx, strs, i, JS_NewStringLen(ctx, (const char *)((uint8_t *)buf + off), len));
+        off += len;
+    }
+    JS_SetPropertyUint32(ctx, result, 1, strs);
+
+    JSValue bools = JS_NewArray(ctx);
+    for (uint32_t i = 0; i < boolCount; i++) {
+        JS_SetPropertyUint32(ctx, bools, i, JS_NewBool(ctx, readUint8(buf, 2043 + i)));
+    }
+    JS_SetPropertyUint32(ctx, result, 2, bools);
+
+    return result;
+}

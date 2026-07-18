@@ -51,6 +51,10 @@ public:
     jclass byteArrayClass;
     JSValue ownPropertyNames;
 
+    // ── Yeow buffer transport ──
+    void *bufPtr;
+    uint32_t bufSize;
+
     jmethodID booleanValueOf;
     jmethodID integerValueOf;
     jmethodID longValueOf;
@@ -98,6 +102,14 @@ public:
     jobject evaluateModule(JNIEnv *env, jobject thiz, jstring script, jstring file_name);
 
     jobject getOwnPropertyNames(JNIEnv *env, jobject thiz, jlong obj);
+
+    // ── Yeow buffer transport ──
+    void initBuffer(void *addr, uint32_t size);
+
+    static JSValue yeowWriteBuffer(JSContext *ctx, JSValueConst this_val,
+                                   int argc, JSValueConst *argv);
+    static JSValue yeowReadBuffer(JSContext *ctx, JSValueConst this_val,
+                                  int argc, JSValueConst *argv);
 };
 
 #endif // QUICKJS_TEST_CONTEXT_WRAPPER_H

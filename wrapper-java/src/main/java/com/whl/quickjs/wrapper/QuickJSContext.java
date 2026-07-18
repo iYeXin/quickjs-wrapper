@@ -659,4 +659,7 @@ public class QuickJSContext implements Closeable {
 
     // destroy context and runtime
     private native void destroyContext(long context);
+
+    // ── Yeow buffer transport ──
+    public native void nativeInitBuffer(long context, java.nio.ByteBuffer buffer);
 }
