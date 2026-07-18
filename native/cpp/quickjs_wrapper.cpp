@@ -1094,6 +1094,7 @@ jstring QuickJSWrapper::toJavaString(JNIEnv *env, JSValue value) const
 void QuickJSWrapper::initBuffer(void *addr, uint32_t size) {
     bufPtr = addr;
     bufSize = size;
+    lengthAtom = JS_NewAtom(context, "length");
 
     // Register $_writeBuffer as a native JS function
     JSValue global = JS_GetGlobalObject(context);
@@ -1133,10 +1134,23 @@ JSValue QuickJSWrapper::yeowWriteBuffer(JSContext *ctx, JSValueConst this_val,
     uint32_t size = self->bufSize;
     if (!buf) return JS_FALSE;
 
+    JSAtom lenAtom = self->lengthAtom;
     uint32_t numCount = 0, strCount = 0, boolCount = 0;
-    if (argc > 0 && JS_IsArray(ctx, argv[0])) numCount = JS_VALUE_GET_INT(JS_GetPropertyStr(ctx, argv[0], "length"));
-    if (argc > 1 && JS_IsArray(ctx, argv[1])) strCount = JS_VALUE_GET_INT(JS_GetPropertyStr(ctx, argv[1], "length"));
-    if (argc > 2 && JS_IsArray(ctx, argv[2])) boolCount = JS_VALUE_GET_INT(JS_GetPropertyStr(ctx, argv[2], "length"));
+    if (argc > 0) {
+        JSValue v = JS_GetProperty(ctx, argv[0], lenAtom);
+        if (JS_IsNumber(v)) numCount = (uint32_t)JS_VALUE_GET_INT(v);
+        JS_FreeValue(ctx, v);
+    }
+    if (argc > 1) {
+        JSValue v = JS_GetProperty(ctx, argv[1], lenAtom);
+        if (JS_IsNumber(v)) strCount = (uint32_t)JS_VALUE_GET_INT(v);
+        JS_FreeValue(ctx, v);
+    }
+    if (argc > 2) {
+        JSValue v = JS_GetProperty(ctx, argv[2], lenAtom);
+        if (JS_IsNumber(v)) boolCount = (uint32_t)JS_VALUE_GET_INT(v);
+        JS_FreeValue(ctx, v);
+    }
 
     if (numCount > 8 || strCount > 4 || boolCount > 5) return JS_FALSE;
     if (3 + 8 + 8 * numCount + (2 + 490) * strCount + boolCount > (int64_t)size) return JS_FALSE;

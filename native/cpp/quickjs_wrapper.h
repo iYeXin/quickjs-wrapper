@@ -54,6 +54,7 @@ public:
     // ── Yeow buffer transport ──
     void *bufPtr;
     uint32_t bufSize;
+    JSAtom lengthAtom;
 
     jmethodID booleanValueOf;
     jmethodID integerValueOf;
