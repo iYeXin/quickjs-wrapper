@@ -350,9 +350,15 @@ Java_com_whl_quickjs_wrapper_QuickJSContext_isJobPending(JNIEnv *env, jclass cla
 // ── Yeow: init buffer transport ──
 extern "C" JNIEXPORT void JNICALL
 Java_com_whl_quickjs_wrapper_QuickJSContext_nativeInitBuffer(JNIEnv *env, jobject thiz,
-                                                              jlong context, jobject buffer)
+                                                              jobject buffer)
 {
-    auto *wrapper = reinterpret_cast<QuickJSWrapper *>(context);
+    // Get private 'context' field from QuickJSContext
+    jclass cls = env->GetObjectClass(thiz);
+    jfieldID fid = env->GetFieldID(cls, "context", "J");
+    jlong ctxPtr = env->GetLongField(thiz, fid);
+    env->DeleteLocalRef(cls);
+
+    auto *wrapper = reinterpret_cast<QuickJSWrapper *>(ctxPtr);
     if (buffer == nullptr) { wrapper->initBuffer(nullptr, 0); return; }
     auto *buf = env->GetDirectBufferAddress(buffer);
     auto size = (uint32_t)env->GetDirectBufferCapacity(buffer);
