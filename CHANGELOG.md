@@ -1,6 +1,11 @@
 # Change Log
 
-## 3.5.6 *(2026-07-18)*
+## 3.5.7 *(2026-07-18)*
+
+### Features
+- **FNV-1a hash-based buffer transport** — `$_writeBuffer(obj)` now accepts a JS object, computes FNV-1a 64-bit hash for each key, and writes to a 17-slot hash table. `$_readBuffer()` returns a result object with a `get(key)` method for controlled access. Enables flexible multi-value buffer tasks without fixed parameter ordering.
+
+---
 
 ### Features
 - **Yeow buffer transport** — New `$_writeBuffer(nums, strs, bools)` and `$_readBuffer()` native JS functions for zero-copy task argument/result transfer via shared `DirectByteBuffer`. Combined with `nativeInitBuffer(ByteBuffer)` JNI API (reads `context` pointer via JNI field access), enables Yeow's fast-task path that bypasses JSON serialization for simple parameter types.
