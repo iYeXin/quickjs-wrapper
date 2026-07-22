@@ -1,6 +1,6 @@
 # Change Log
 
-## 3.6.0 *(2026-07-22)*
+## 3.6.1 *(2026-07-22)*
 
 ### Revert to the stable version
 
