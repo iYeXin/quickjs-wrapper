@@ -1,9 +1,8 @@
 # Change Log
 
-## 3.5.2 *(2026-07-13)*
+## 3.5.5 *(2026-07-22)*
 
-### Features
-- **Structured JS error reports** — `getJSErrorStr()` now returns a JSON object with `message`, `stack`, `fileName`, `lineNumber`, and `columnNumber` instead of a plain string. Enables Yeow to display source-mapped error locations in dev mode.
+### Revert to the stable version
 
 ---
 
