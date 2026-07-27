@@ -2,7 +2,6 @@ package com.whl.quickjs.wrapper;
 
 import java.io.*;
 import java.nio.file.*;
-import java.util.*;
 
 final class QuickJSNativeLoader {
 
@@ -35,14 +34,13 @@ final class QuickJSNativeLoader {
             String resourcePath = dir + libName;
             try (InputStream is = QuickJSNativeLoader.class.getClassLoader().getResourceAsStream(resourcePath)) {
                 if (is != null) {
-                    Path tempDir = Files.createTempDirectory("quickjs-java-wrapper-");
-                    tempDir.toFile().deleteOnExit();
+                    Path extractDir = Path.of(System.getProperty("java.io.tmpdir"), "yeow-quickjs");
+                    Files.createDirectories(extractDir);
 
-                    Path libFile = tempDir.resolve(libName);
+                    Path libFile = extractDir.resolve(libName);
                     Files.copy(is, libFile, StandardCopyOption.REPLACE_EXISTING);
-                    libFile.toFile().deleteOnExit();
 
-                    extractAndLoadDeps(platform, dir, tempDir, libName);
+                    extractAndLoadDeps(platform, dir, extractDir);
 
                     try {
                         System.load(libFile.toAbsolutePath().toString());
@@ -70,52 +68,33 @@ final class QuickJSNativeLoader {
     }
 
     /**
-     * Extract known companion libs to temp dir.
-     * On Windows, the DLL loader searches the loaded DLL's directory for
-     * dependencies, so copying them alongside is sufficient.
-     * On Linux/macOS, the dynamic linker does NOT search the loaded lib's
-     * directory by default, so we must System.load() each dependency first
-     * to register it in the process address space before loading the main lib.
+     * Extract known companion libs and load them into the process.
+     * All platforms use System.load() for dependencies — Windows DLL
+     * search does NOT automatically include the loaded DLL's directory.
      */
-    private static void extractAndLoadDeps(String platform, String dir, Path tempDir, String mainLibName) {
-        String[][] knownDeps;
+    private static void extractAndLoadDeps(String platform, String dir, Path extractDir) {
+        String[] deps;
         if (platform.startsWith("windows")) {
-            knownDeps = new String[][]{
-                {"libwinpthread-1.dll", "libgcc_s_seh-1.dll", "libstdc++-6.dll"},
-                {"libgcc_s_dw2-1.dll", "libwinpthread-2.dll"}  // 32-bit fallback names
-            };
+            deps = new String[]{"libwinpthread-1.dll"};
         } else if (platform.startsWith("linux")) {
-            knownDeps = new String[][]{
-                {"libquickjs.so", "libquickjs.so.0"},
-            };
+            deps = new String[]{"libquickjs.so", "libquickjs.so.0"};
         } else if (platform.startsWith("macos")) {
-            knownDeps = new String[][]{
-                {"libquickjs.dylib"},
-            };
+            deps = new String[]{"libquickjs.dylib"};
         } else {
-            knownDeps = new String[0][];
+            deps = new String[0];
         }
 
-        boolean isWindows = platform.startsWith("windows");
+        for (String dep : deps) {
+            try {
+                InputStream dis = QuickJSNativeLoader.class.getClassLoader().getResourceAsStream(dir + dep);
+                if (dis == null) continue;
 
-        for (String[] group : knownDeps) {
-            for (String dep : group) {
-                try (InputStream dis = QuickJSNativeLoader.class.getClassLoader().getResourceAsStream(dir + dep)) {
-                    if (dis == null) continue;
+                Path depFile = extractDir.resolve(dep);
+                Files.copy(dis, depFile, StandardCopyOption.REPLACE_EXISTING);
+                dis.close();
 
-                    Path depFile = tempDir.resolve(dep);
-                    Files.copy(dis, depFile, StandardCopyOption.REPLACE_EXISTING);
-                    depFile.toFile().deleteOnExit();
-
-                    // On non-Windows: must load dependency into process first
-                    // so the dynamic linker finds it when loading the main lib.
-                    // On Windows: DLL search path includes the loaded DLL's
-                    // directory, so just copying alongside is sufficient.
-                    if (!isWindows) {
-                        System.load(depFile.toAbsolutePath().toString());
-                    }
-                } catch (Exception ignored) {}
-            }
+                System.load(depFile.toAbsolutePath().toString());
+            } catch (Exception ignored) {}
         }
     }
 

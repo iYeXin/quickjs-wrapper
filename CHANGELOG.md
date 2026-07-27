@@ -1,5 +1,14 @@
 # Change Log
 
+## 3.6.3 *(2026-07-28)*
+
+### Bug Fixes
+- **Fix Windows DLL dependency loading** — `extractAndLoadDeps` incorrectly relied on Windows DLL search path to find `libwinpthread-1.dll`. All platforms now explicitly `System.load()` dependency DLLs before loading the main library, ensuring they are registered in the process address space regardless of OS search behavior.
+- **Use fixed extraction directory** — replaced `Files.createTempDirectory(random)` with a fixed path `%TEMP%/yeow-quickjs`, avoiding directory accumulation from repeated plugin reloads and ensuring dependency DLLs persist across restarts.
+- **Remove unused dependency entries** — dropped `libgcc_s_seh-1.dll`, `libstdc++-6.dll`, and 32-bit fallback names from Windows `knownDeps`; only `libwinpthread-1.dll` is needed.
+
+---
+
 ## 3.6.2 *(2026-07-22)*
 
 ### Fix loaders
