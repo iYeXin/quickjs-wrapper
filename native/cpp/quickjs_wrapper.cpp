@@ -547,7 +547,16 @@ QuickJSWrapper::QuickJSWrapper(JNIEnv *env, jobject thiz, JSRuntime *rt)
         JS_SetRuntimeOpaque(runtime, this);
         initJSFuncCallback(context);
         loadExtendLibraries(context);
-        injectBase64Functions(context);
+
+        // Inject base64 helpers directly — inlined to prevent linker GC with -ffunction-sections
+        {
+            JSValue g = JS_GetGlobalObject(context);
+            JS_SetPropertyStr(context, g, "Uint8ArrayToBase64",
+                JS_NewCFunction(context, js_uint8ArrayToBase64, "Uint8ArrayToBase64", 1));
+            JS_SetPropertyStr(context, g, "Base64ToUint8Array",
+                JS_NewCFunction(context, js_base64ToUint8Array, "Base64ToUint8Array", 1));
+            JS_FreeValue(context, g);
+        }
 
     const char *getOwnPropertyNames = "Object.getOwnPropertyNames";
     ownPropertyNames = JS_Eval(context, getOwnPropertyNames, strlen(getOwnPropertyNames), getOwnPropertyNames, JS_EVAL_TYPE_GLOBAL);
