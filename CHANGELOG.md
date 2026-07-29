@@ -1,5 +1,12 @@
 # Change Log
 
+## 3.6.7 *(2026-07-29)*
+
+### Bug Fixes
+- Fix `JS_NewArrayBuffer` allocator mismatch — use NULL free_func to let QuickJS copy data
+
+---
+
 ## 3.6.6 *(2026-07-29)*
 
 ### Bug Fixes
