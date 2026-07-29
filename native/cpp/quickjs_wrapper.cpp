@@ -4,6 +4,7 @@
 #include "quickjs_wrapper.h"
 #include "../quickjs/cutils.h"
 #include "quickjs_extend_libraries.h"
+#include <cstdint>
 #include <cstring>
 #include <cmath>
 
