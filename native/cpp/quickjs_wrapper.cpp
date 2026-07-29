@@ -35,6 +35,26 @@ static bool JS_IsArrayBuffer(JSValue value)
 // ── Base64 helpers ──────────────────────────────────────────────────
 static const char base64_table[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 
+// Compile-time constant decode table
+static const int8_t b64_decode[256] = {
+    -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
+    -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,62,-1,-1,-1,63,
+    52,53,54,55,56,57,58,59,60,61,-1,-1,-1,-1,-1,-1,
+    -1, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9,10,11,12,13,14,
+    15,16,17,18,19,20,21,22,23,24,25,-1,-1,-1,-1,-1,
+    -1,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,
+    41,42,43,44,45,46,47,48,49,50,51,-1,-1,-1,-1,-1,
+    -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
+    -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
+    -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
+    -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
+    -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
+    -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
+    -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
+    -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
+    -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1
+};
+
 static JSValue js_uint8ArrayToBase64(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
     if (argc < 1 || !JS_IsArrayBuffer(argv[0])) {
@@ -48,20 +68,26 @@ static JSValue js_uint8ArrayToBase64(JSContext *ctx, JSValueConst this_val, int 
     char *out = (char *)js_malloc(ctx, outLen + 1);
     if (!out) return JS_ThrowOutOfMemory(ctx);
 
-    for (size_t i = 0, j = 0; i < len;) {
-        uint32_t triplet = (uint32_t)buf[i++] << 16;
-        triplet |= (i < len ? (uint32_t)buf[i++] : 0) << 8;
-        triplet |= (i < len ? (uint32_t)buf[i++] : 0);
+    size_t j = 0;
+    for (size_t ip = 0; ip < len; ip += 3) {
+        int n = (len - ip) >= 3 ? 3 : (int)(len - ip); // bytes read this triplet (1, 2, or 3)
+        uint32_t triplet = (uint32_t)buf[ip] << 16;
+        if (n >= 2) triplet |= (uint32_t)buf[ip + 1] << 8;
+        if (n >= 3) triplet |= (uint32_t)buf[ip + 2];
         out[j++] = base64_table[(triplet >> 18) & 0x3F];
         out[j++] = base64_table[(triplet >> 12) & 0x3F];
-        out[j++] = (i > len + 1) ? '=' : base64_table[(triplet >> 6) & 0x3F];
-        out[j++] = (i > len) ? '=' : base64_table[triplet & 0x3F];
+        out[j++] = (n >= 2) ? base64_table[(triplet >> 6) & 0x3F] : '=';
+        out[j++] = (n >= 3) ? base64_table[triplet & 0x3F] : '=';
     }
     out[outLen] = '\0';
 
     JSValue result = JS_NewString(ctx, out);
     js_free(ctx, out);
     return result;
+}
+
+static void b64_free_buffer(JSRuntime *rt, void *opaque, void *ptr) {
+    js_free_rt(rt, ptr);
 }
 
 static JSValue js_base64ToUint8Array(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
@@ -73,37 +99,50 @@ static JSValue js_base64ToUint8Array(JSContext *ctx, JSValueConst this_val, int 
     if (!str) return JS_ThrowOutOfMemory(ctx);
 
     size_t len = strlen(str);
-    // Handle padding
+    if (len == 0 || len % 4 != 0) {
+        JS_FreeCString(ctx, str);
+        return JS_ThrowTypeError(ctx, "Base64ToUint8Array: invalid input length");
+    }
+
+    // Count padding and determine data length
     size_t pad = 0;
-    if (len > 0 && str[len - 1] == '=') pad++;
-    if (len > 1 && str[len - 2] == '=') pad++;
-    size_t outLen = (len / 4) * 3 - pad;
+    while (pad < 2 && len > pad && str[len - 1 - pad] == '=') pad++;
+    size_t groupCount = len / 4;
+    size_t outLen = groupCount * 3 - pad;
+    if (outLen == 0) {
+        JS_FreeCString(ctx, str);
+        return JS_ThrowTypeError(ctx, "Base64ToUint8Array: empty output");
+    }
 
     uint8_t *out = (uint8_t *)js_malloc(ctx, outLen);
     if (!out) { JS_FreeCString(ctx, str); return JS_ThrowOutOfMemory(ctx); }
 
-    static int8_t decode_table[256];
-    static bool table_init = false;
-    if (!table_init) {
-        memset(decode_table, -1, sizeof(decode_table));
-        for (int i = 0; i < 64; i++) decode_table[(uint8_t)base64_table[i]] = (int8_t)i;
-        table_init = true;
-    }
-
-    for (size_t i = 0, j = 0; i < len;) {
-        uint32_t sextet_a = decode_table[(uint8_t)str[i++]];
-        uint32_t sextet_b = decode_table[(uint8_t)str[i++]];
-        uint32_t sextet_c = decode_table[(uint8_t)str[i++]];
-        uint32_t sextet_d = decode_table[(uint8_t)str[i++]];
-        uint32_t triplet = (sextet_a << 18) | (sextet_b << 12) | (sextet_c << 6) | sextet_d;
+    size_t j = 0;
+    for (size_t ip = 0; ip < len; ip += 4) {
+        // Stop processing if we hit padding
+        if (str[ip] == '=') break;
+        int8_t sa = b64_decode[(uint8_t)str[ip]];
+        int8_t sb = b64_decode[(uint8_t)str[ip + 1]];
+        int8_t sc = b64_decode[(uint8_t)str[ip + 2]];
+        int8_t sd = b64_decode[(uint8_t)str[ip + 3]];
+        if (sa < 0 || sb < 0) {
+            js_free(ctx, out); JS_FreeCString(ctx, str);
+            return JS_ThrowTypeError(ctx, "Base64ToUint8Array: invalid character");
+        }
+        // Padding chars: '=' yields -1 from decode table, which is < 0 — stop
+        uint32_t triplet = ((uint32_t)sa << 18) | ((uint32_t)sb << 12);
+        if (sc >= 0) triplet |= ((uint32_t)sc << 6);
+        if (sd >= 0) triplet |= (uint32_t)sd;
         if (j < outLen) out[j++] = (triplet >> 16) & 0xFF;
-        if (j < outLen) out[j++] = (triplet >> 8) & 0xFF;
-        if (j < outLen) out[j++] = triplet & 0xFF;
+        if (j < outLen && sc >= 0) out[j++] = (triplet >> 8) & 0xFF;
+        if (j < outLen && sd >= 0) out[j++] = triplet & 0xFF;
     }
 
     JS_FreeCString(ctx, str);
-    JSValue result = JS_NewArrayBuffer(ctx, out, outLen, nullptr, nullptr, false);
-    js_free(ctx, out);
+    JSValue result = JS_NewArrayBuffer(ctx, out, outLen, b64_free_buffer, nullptr, false);
+    if (JS_IsException(result)) {
+        js_free(ctx, out);
+    }
     return result;
 }
 
