@@ -1,5 +1,16 @@
 # Change Log
 
+## 3.6.15 *(2026-07-29)*
+
+### Breaking Changes
+- Rename base64 globals to camelCase: `uint8ArrayToBase64`, `base64ToUint8Array`
+
+### Bug Fixes
+- Fix publish workflow writing native libs to wrong directory (repo root vs `wrapper-java/`)
+- Inline base64 injection into constructor to prevent linker `--gc-sections` stripping
+
+---
+
 ## 3.6.11 *(2026-07-29)*
 
 ### Infrastructure
