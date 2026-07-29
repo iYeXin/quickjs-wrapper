@@ -1,5 +1,11 @@
 # Change Log
 
+## 3.6.11 *(2026-07-29)*
+
+### Infrastructure
+- Remove CHANGELOG-less release guard — publish always creates release
+
+
 ## 3.6.10 *(2026-07-29)*
 
 ### Bug Fixes
