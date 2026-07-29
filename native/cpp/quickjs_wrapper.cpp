@@ -37,7 +37,7 @@ static bool JS_IsArrayBuffer(JSValue value)
 static const char base64_table[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 
 // Compile-time constant decode table
-static const int8_t b64_decode[256] = {
+static const signed char b64_decode[256] = {
     -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
     -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,62,-1,-1,-1,63,
     52,53,54,55,56,57,58,59,60,61,-1,-1,-1,-1,-1,-1,
@@ -118,10 +118,10 @@ static JSValue js_base64ToUint8Array(JSContext *ctx, JSValueConst this_val, int 
     for (size_t ip = 0; ip < len; ip += 4) {
         // Stop processing if we hit padding
         if (str[ip] == '=') break;
-        int8_t sa = b64_decode[(uint8_t)str[ip]];
-        int8_t sb = b64_decode[(uint8_t)str[ip + 1]];
-        int8_t sc = b64_decode[(uint8_t)str[ip + 2]];
-        int8_t sd = b64_decode[(uint8_t)str[ip + 3]];
+        signed char sa = b64_decode[(uint8_t)str[ip]];
+        signed char sb = b64_decode[(uint8_t)str[ip + 1]];
+        signed char sc = b64_decode[(uint8_t)str[ip + 2]];
+        signed char sd = b64_decode[(uint8_t)str[ip + 3]];
         if (sa < 0 || sb < 0) {
             js_free(ctx, out); JS_FreeCString(ctx, str);
             return JS_ThrowTypeError(ctx, "Base64ToUint8Array: invalid character");
