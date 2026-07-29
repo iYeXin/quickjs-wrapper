@@ -543,15 +543,45 @@ QuickJSWrapper::QuickJSWrapper(JNIEnv *env, jobject thiz, JSRuntime *rt)
         initJSFuncCallback(context);
         loadExtendLibraries(context);
 
-        // Inject base64 helpers directly — inlined to prevent linker GC with -ffunction-sections
+        // Inject base64 helpers
+        // Encode stays in C for performance; decode is JS (avoids MinGW cross-compile issues)
         {
             JSValue g = JS_GetGlobalObject(context);
             JS_SetPropertyStr(context, g, "Uint8ArrayToBase64",
                 JS_NewCFunction(context, js_uint8ArrayToBase64, "Uint8ArrayToBase64", 1));
-            JS_SetPropertyStr(context, g, "Base64ToUint8Array",
-                JS_NewCFunction(context, js_base64ToUint8Array, "Base64ToUint8Array", 1));
             JS_FreeValue(context, g);
         }
+        // Decode implemented in JS to avoid MinGW cross-compilation type aliasing issues
+        JS_FreeValue(context, JS_Eval(context, R"(
+(function(){
+const _t = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+const _d = new Int8Array(256).fill(-1);
+for (var i = 0; i < 64; i++) _d[_t.charCodeAt(i)] = i;
+globalThis.Base64ToUint8Array = function(str) {
+    var len = str.length;
+    if (len === 0 || len % 4 !== 0) throw new Error("invalid length");
+    var pad = 0;
+    while (pad < 2 && len > pad && str[len - 1 - pad] === '=') pad++;
+    var outLen = (len / 4) * 3 - pad;
+    var out = new Uint8Array(outLen);
+    var j = 0;
+    for (var i = 0; i < len; i += 4) {
+        if (str[i] === '=') break;
+        var sa = _d[str.charCodeAt(i)];
+        var sb = _d[str.charCodeAt(i + 1)];
+        var sc = _d[str.charCodeAt(i + 2)];
+        var sd = _d[str.charCodeAt(i + 3)];
+        if (sa < 0 || sb < 0) throw new Error("invalid character");
+        var triplet = (sa << 18) | (sb << 12);
+        if (sc >= 0) triplet |= (sc << 6);
+        if (sd >= 0) triplet |= sd;
+        if (j < outLen) out[j++] = (triplet >> 16) & 0xFF;
+        if (j < outLen && sc >= 0) out[j++] = (triplet >> 8) & 0xFF;
+        if (j < outLen && sd >= 0) out[j++] = triplet & 0xFF;
+    }
+    return out.buffer;
+};
+})())", "base64-js.js", JS_EVAL_TYPE_GLOBAL));
 
     const char *getOwnPropertyNames = "Object.getOwnPropertyNames";
     ownPropertyNames = JS_Eval(context, getOwnPropertyNames, strlen(getOwnPropertyNames), getOwnPropertyNames, JS_EVAL_TYPE_GLOBAL);
