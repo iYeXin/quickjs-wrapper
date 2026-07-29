@@ -127,17 +127,19 @@ jobs:
 
       - name: Embed native libs into JAR resources
         run: |
+          cd wrapper-java
           mkdir -p src/main/resources/native/linux-x86_64
           mkdir -p src/main/resources/native/macos-x86_64
           mkdir -p src/main/resources/native/macos-arm64
           mkdir -p src/main/resources/native/windows-x86_64
-          cp native-dist/native-linux-x86_64/* src/main/resources/native/linux-x86_64/ 2>/dev/null || true
-          cp native-dist/native-macos-x86_64/* src/main/resources/native/macos-x86_64/ 2>/dev/null || true
-          cp native-dist/native-macos-arm64/* src/main/resources/native/macos-arm64/ 2>/dev/null || true
-          cp native-dist/native-windows-x86_64/* src/main/resources/native/windows-x86_64/ 2>/dev/null || true
+          cp ../native-dist/native-linux-x86_64/* src/main/resources/native/linux-x86_64/ 2>/dev/null || true
+          cp ../native-dist/native-macos-x86_64/* src/main/resources/native/macos-x86_64/ 2>/dev/null || true
+          cp ../native-dist/native-macos-arm64/* src/main/resources/native/macos-arm64/ 2>/dev/null || true
+          cp ../native-dist/native-windows-x86_64/* src/main/resources/native/windows-x86_64/ 2>/dev/null || true
 
       - name: Copy matching MinGW runtime DLLs
         run: |
+          cd wrapper-java
           WIN_DIR=src/main/resources/native/windows-x86_64
           # Dump DLL dependencies for debugging
           echo "=== DLL dependencies ==="
