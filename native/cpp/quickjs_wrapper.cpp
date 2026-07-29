@@ -135,7 +135,7 @@ static JSValue js_base64ToUint8Array(JSContext *ctx, JSValueConst this_val, int 
     }
 
     JS_FreeCString(ctx, str);
-    JSValue result = JS_NewArrayBuffer(ctx, out, outLen, nullptr, nullptr, false);
+    JSValue result = JS_NewArrayBufferCopy(ctx, out, outLen);
     js_free(ctx, out);
     return result;
 }
