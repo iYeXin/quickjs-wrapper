@@ -1,9 +1,22 @@
 # Change Log
 
+## 3.6.8 *(2026-07-29)*
+
+### Bug Fixes
+- **Use `JS_NewArrayBufferCopy`** — replaced `JS_NewArrayBuffer(NULL)` with explicit copy API.
+  Fixes Base64 decode producing garbled output on Windows (MinGW cross-compiled QuickJS).
+
+### Infrastructure
+- **Fix publish workflow paths** — native resource `cp` commands now target `wrapper-java/src/main/resources/`
+  instead of repo root, ensuring CI-built DLLs are actually embedded in the JAR.
+
+---
+
 ## 3.6.7 *(2026-07-29)*
 
 ### Bug Fixes
 - Fix `JS_NewArrayBuffer` allocator mismatch — use NULL free_func to let QuickJS copy data
+- Fix Base64 decode table `int8_t` initializer compatibility on MinGW
 
 ---
 
