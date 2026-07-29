@@ -1,5 +1,11 @@
 # Change Log
 
+## 3.6.9 *(2026-07-29)*
+
+### Bug Fixes
+- Use `JS_NewArrayBufferCopy` instead of `JS_NewArrayBuffer(NULL)` — explicit copy API
+
+
 ## 3.6.8 *(2026-07-29)*
 
 ### Bug Fixes
