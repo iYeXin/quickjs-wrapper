@@ -59,11 +59,11 @@ static const signed char b64_decode[256] = {
 static JSValue js_uint8ArrayToBase64(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
     if (argc < 1 || !JS_IsArrayBuffer(argv[0])) {
-        return JS_ThrowTypeError(ctx, "Uint8ArrayToBase64 expects an ArrayBuffer");
+        return JS_ThrowTypeError(ctx, "uint8ArrayToBase64 expects an ArrayBuffer");
     }
     size_t len;
     uint8_t *buf = JS_GetArrayBuffer(ctx, &len, argv[0]);
-    if (!buf) return JS_ThrowTypeError(ctx, "Uint8ArrayToBase64: failed to read buffer");
+    if (!buf) return JS_ThrowTypeError(ctx, "uint8ArrayToBase64: failed to read buffer");
 
     size_t outLen = ((len + 2) / 3) * 4;
     char *out = (char *)js_malloc(ctx, outLen + 1);
@@ -90,7 +90,7 @@ static JSValue js_uint8ArrayToBase64(JSContext *ctx, JSValueConst this_val, int 
 static JSValue js_base64ToUint8Array(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
     if (argc < 1 || !JS_IsString(argv[0])) {
-        return JS_ThrowTypeError(ctx, "Base64ToUint8Array expects a string");
+        return JS_ThrowTypeError(ctx, "base64ToUint8Array expects a string");
     }
     const char *str = JS_ToCString(ctx, argv[0]);
     if (!str) return JS_ThrowOutOfMemory(ctx);
@@ -98,7 +98,7 @@ static JSValue js_base64ToUint8Array(JSContext *ctx, JSValueConst this_val, int 
     size_t len = strlen(str);
     if (len == 0 || len % 4 != 0) {
         JS_FreeCString(ctx, str);
-        return JS_ThrowTypeError(ctx, "Base64ToUint8Array: invalid input length");
+        return JS_ThrowTypeError(ctx, "base64ToUint8Array: invalid input length");
     }
 
     size_t pad = 0;
@@ -107,7 +107,7 @@ static JSValue js_base64ToUint8Array(JSContext *ctx, JSValueConst this_val, int 
     size_t outLen = groupCount * 3 - pad;
     if (outLen == 0) {
         JS_FreeCString(ctx, str);
-        return JS_ThrowTypeError(ctx, "Base64ToUint8Array: empty output");
+        return JS_ThrowTypeError(ctx, "base64ToUint8Array: empty output");
     }
 
     uint8_t *out = (uint8_t *)js_malloc(ctx, outLen);
@@ -127,7 +127,7 @@ static JSValue js_base64ToUint8Array(JSContext *ctx, JSValueConst this_val, int 
         unsigned char sd = d[(unsigned char)str[ip + 3]];
         if (sa == 0xFF || sb == 0xFF) {
             js_free(ctx, out); JS_FreeCString(ctx, str);
-            return JS_ThrowTypeError(ctx, "Base64ToUint8Array: invalid character");
+            return JS_ThrowTypeError(ctx, "base64ToUint8Array: invalid character");
         }
         uint32_t triplet = ((uint32_t)sa << 18) | ((uint32_t)sb << 12);
         if (sc != 0xFF) triplet |= ((uint32_t)sc << 6);
@@ -146,10 +146,10 @@ static JSValue js_base64ToUint8Array(JSContext *ctx, JSValueConst this_val, int 
 static void injectBase64Functions(JSContext *ctx)
 {
     JSValue global = JS_GetGlobalObject(ctx);
-    JS_SetPropertyStr(ctx, global, "Uint8ArrayToBase64",
-        JS_NewCFunction(ctx, js_uint8ArrayToBase64, "Uint8ArrayToBase64", 1));
-    JS_SetPropertyStr(ctx, global, "Base64ToUint8Array",
-        JS_NewCFunction(ctx, js_base64ToUint8Array, "Base64ToUint8Array", 1));
+    JS_SetPropertyStr(ctx, global, "uint8ArrayToBase64",
+        JS_NewCFunction(ctx, js_uint8ArrayToBase64, "uint8ArrayToBase64", 1));
+    JS_SetPropertyStr(ctx, global, "base64ToUint8Array",
+        JS_NewCFunction(ctx, js_base64ToUint8Array, "base64ToUint8Array", 1));
     JS_FreeValue(ctx, global);
 }
 
@@ -548,10 +548,10 @@ QuickJSWrapper::QuickJSWrapper(JNIEnv *env, jobject thiz, JSRuntime *rt)
         // Inject base64 helpers
         {
             JSValue g = JS_GetGlobalObject(context);
-            JS_SetPropertyStr(context, g, "Uint8ArrayToBase64",
-                JS_NewCFunction(context, js_uint8ArrayToBase64, "Uint8ArrayToBase64", 1));
-            JS_SetPropertyStr(context, g, "Base64ToUint8Array",
-                JS_NewCFunction(context, js_base64ToUint8Array, "Base64ToUint8Array", 1));
+            JS_SetPropertyStr(context, g, "uint8ArrayToBase64",
+                JS_NewCFunction(context, js_uint8ArrayToBase64, "uint8ArrayToBase64", 1));
+            JS_SetPropertyStr(context, g, "base64ToUint8Array",
+                JS_NewCFunction(context, js_base64ToUint8Array, "base64ToUint8Array", 1));
             JS_FreeValue(context, g);
         }
 
