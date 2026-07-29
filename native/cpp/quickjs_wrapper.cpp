@@ -27,9 +27,94 @@ static string getJavaName(JNIEnv *env, jobject javaClass)
 // quickjs 没有提供 JS_IsArrayBuffer 方法，这里通过取巧的方式来实现，后续可以替换掉
 static bool JS_IsArrayBuffer(JSValue value)
 {
-    // quickjs 里的 ArrayBuffer 对应的类型枚举�?
+    // quickjs 里的 ArrayBuffer 对应的类型枚举值
     int8_t JS_CLASS_ARRAY_BUFFER = 19;
     return JS_GetClassID(value) == JS_CLASS_ARRAY_BUFFER;
+}
+
+// ── Base64 helpers ──────────────────────────────────────────────────
+static const char base64_table[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+
+static JSValue js_uint8ArrayToBase64(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+    if (argc < 1 || !JS_IsArrayBuffer(argv[0])) {
+        return JS_ThrowTypeError(ctx, "Uint8ArrayToBase64 expects an ArrayBuffer");
+    }
+    size_t len;
+    uint8_t *buf = JS_GetArrayBuffer(ctx, &len, argv[0]);
+    if (!buf) return JS_ThrowTypeError(ctx, "Uint8ArrayToBase64: failed to read buffer");
+
+    size_t outLen = ((len + 2) / 3) * 4;
+    char *out = (char *)js_malloc(ctx, outLen + 1);
+    if (!out) return JS_ThrowOutOfMemory(ctx);
+
+    for (size_t i = 0, j = 0; i < len;) {
+        uint32_t triplet = (uint32_t)buf[i++] << 16;
+        triplet |= (i < len ? (uint32_t)buf[i++] : 0) << 8;
+        triplet |= (i < len ? (uint32_t)buf[i++] : 0);
+        out[j++] = base64_table[(triplet >> 18) & 0x3F];
+        out[j++] = base64_table[(triplet >> 12) & 0x3F];
+        out[j++] = (i > len + 1) ? '=' : base64_table[(triplet >> 6) & 0x3F];
+        out[j++] = (i > len) ? '=' : base64_table[triplet & 0x3F];
+    }
+    out[outLen] = '\0';
+
+    JSValue result = JS_NewString(ctx, out);
+    js_free(ctx, out);
+    return result;
+}
+
+static JSValue js_base64ToUint8Array(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+    if (argc < 1 || !JS_IsString(argv[0])) {
+        return JS_ThrowTypeError(ctx, "Base64ToUint8Array expects a string");
+    }
+    const char *str = JS_ToCString(ctx, argv[0]);
+    if (!str) return JS_ThrowOutOfMemory(ctx);
+
+    size_t len = strlen(str);
+    // Handle padding
+    size_t pad = 0;
+    if (len > 0 && str[len - 1] == '=') pad++;
+    if (len > 1 && str[len - 2] == '=') pad++;
+    size_t outLen = (len / 4) * 3 - pad;
+
+    uint8_t *out = (uint8_t *)js_malloc(ctx, outLen);
+    if (!out) { JS_FreeCString(ctx, str); return JS_ThrowOutOfMemory(ctx); }
+
+    static int8_t decode_table[256];
+    static bool table_init = false;
+    if (!table_init) {
+        memset(decode_table, -1, sizeof(decode_table));
+        for (int i = 0; i < 64; i++) decode_table[(uint8_t)base64_table[i]] = (int8_t)i;
+        table_init = true;
+    }
+
+    for (size_t i = 0, j = 0; i < len;) {
+        uint32_t sextet_a = decode_table[(uint8_t)str[i++]];
+        uint32_t sextet_b = decode_table[(uint8_t)str[i++]];
+        uint32_t sextet_c = decode_table[(uint8_t)str[i++]];
+        uint32_t sextet_d = decode_table[(uint8_t)str[i++]];
+        uint32_t triplet = (sextet_a << 18) | (sextet_b << 12) | (sextet_c << 6) | sextet_d;
+        if (j < outLen) out[j++] = (triplet >> 16) & 0xFF;
+        if (j < outLen) out[j++] = (triplet >> 8) & 0xFF;
+        if (j < outLen) out[j++] = triplet & 0xFF;
+    }
+
+    JS_FreeCString(ctx, str);
+    JSValue result = JS_NewArrayBuffer(ctx, out, outLen, nullptr, nullptr, false);
+    js_free(ctx, out);
+    return result;
+}
+
+static void injectBase64Functions(JSContext *ctx)
+{
+    JSValue global = JS_GetGlobalObject(ctx);
+    JS_SetPropertyStr(ctx, global, "Uint8ArrayToBase64",
+        JS_NewCFunction(ctx, js_uint8ArrayToBase64, "Uint8ArrayToBase64", 1));
+    JS_SetPropertyStr(ctx, global, "Base64ToUint8Array",
+        JS_NewCFunction(ctx, js_base64ToUint8Array, "Base64ToUint8Array", 1));
+    JS_FreeValue(ctx, global);
 }
 
 static void tryToTriggerOnError(JSContext *ctx, JSValueConst *error)
@@ -418,11 +503,12 @@ QuickJSWrapper::QuickJSWrapper(JNIEnv *env, jobject thiz, JSRuntime *rt)
 
     JS_SetHostPromiseRejectionTracker(runtime, promiseRejectionTracker, &unhandledRejections);
 
-    context = JS_NewContext(runtime);
+        context = JS_NewContext(runtime);
 
-    JS_SetRuntimeOpaque(runtime, this);
-    initJSFuncCallback(context);
-    loadExtendLibraries(context);
+        JS_SetRuntimeOpaque(runtime, this);
+        initJSFuncCallback(context);
+        loadExtendLibraries(context);
+        injectBase64Functions(context);
 
     const char *getOwnPropertyNames = "Object.getOwnPropertyNames";
     ownPropertyNames = JS_Eval(context, getOwnPropertyNames, strlen(getOwnPropertyNames), getOwnPropertyNames, JS_EVAL_TYPE_GLOBAL);

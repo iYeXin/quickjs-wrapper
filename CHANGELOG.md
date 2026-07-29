@@ -1,5 +1,13 @@
 # Change Log
 
+## 3.6.4 *(2026-07-29)*
+
+### New Features
+- **`Uint8ArrayToBase64(arr)`** — converts ArrayBuffer/Uint8Array to base64 string. Injected globally via C binding.
+- **`Base64ToUint8Array(str)`** — converts base64 string to ArrayBuffer. Injected globally via C binding.
+
+---
+
 ## 3.6.3 *(2026-07-28)*
 
 ### Bug Fixes
