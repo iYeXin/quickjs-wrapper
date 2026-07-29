@@ -1,5 +1,14 @@
 # Change Log
 
+## 3.6.6 *(2026-07-29)*
+
+### Bug Fixes
+- **Inline base64 injection into constructor** — `injectBase64Functions` was compiled as a `static` function
+  and stripped by `-Wl,--gc-sections` on Windows, leaving `Uint8ArrayToBase64`/`Base64ToUint8Array` undefined.
+  The setup code is now inlined directly into the QuickJSWrapper constructor.
+
+---
+
 ## 3.6.5 *(2026-07-29)*
 
 ### Bug Fixes
