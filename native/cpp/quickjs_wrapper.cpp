@@ -86,10 +86,6 @@ static JSValue js_uint8ArrayToBase64(JSContext *ctx, JSValueConst this_val, int 
     return result;
 }
 
-static void b64_free_buffer(JSRuntime *rt, void *opaque, void *ptr) {
-    js_free_rt(rt, ptr);
-}
-
 static JSValue js_base64ToUint8Array(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
     if (argc < 1 || !JS_IsString(argv[0])) {
@@ -139,10 +135,8 @@ static JSValue js_base64ToUint8Array(JSContext *ctx, JSValueConst this_val, int 
     }
 
     JS_FreeCString(ctx, str);
-    JSValue result = JS_NewArrayBuffer(ctx, out, outLen, b64_free_buffer, nullptr, false);
-    if (JS_IsException(result)) {
-        js_free(ctx, out);
-    }
+    JSValue result = JS_NewArrayBuffer(ctx, out, outLen, nullptr, nullptr, false);
+    js_free(ctx, out);
     return result;
 }
 
