@@ -101,7 +101,6 @@ static JSValue js_base64ToUint8Array(JSContext *ctx, JSValueConst this_val, int 
         return JS_ThrowTypeError(ctx, "Base64ToUint8Array: invalid input length");
     }
 
-    // Count padding and determine data length
     size_t pad = 0;
     while (pad < 2 && len > pad && str[len - 1 - pad] == '=') pad++;
     size_t groupCount = len / 4;
@@ -114,25 +113,28 @@ static JSValue js_base64ToUint8Array(JSContext *ctx, JSValueConst this_val, int 
     uint8_t *out = (uint8_t *)js_malloc(ctx, outLen);
     if (!out) { JS_FreeCString(ctx, str); return JS_ThrowOutOfMemory(ctx); }
 
+    // Build decode table at runtime — see no static const array
+    unsigned char d[256];
+    memset(d, 0xFF, 256);
+    for (int i = 0; i < 64; i++) d[(unsigned char)base64_table[i]] = (unsigned char)i;
+
     size_t j = 0;
     for (size_t ip = 0; ip < len; ip += 4) {
-        // Stop processing if we hit padding
         if (str[ip] == '=') break;
-        signed char sa = b64_decode[(uint8_t)str[ip]];
-        signed char sb = b64_decode[(uint8_t)str[ip + 1]];
-        signed char sc = b64_decode[(uint8_t)str[ip + 2]];
-        signed char sd = b64_decode[(uint8_t)str[ip + 3]];
-        if (sa < 0 || sb < 0) {
+        unsigned char sa = d[(unsigned char)str[ip]];
+        unsigned char sb = d[(unsigned char)str[ip + 1]];
+        unsigned char sc = d[(unsigned char)str[ip + 2]];
+        unsigned char sd = d[(unsigned char)str[ip + 3]];
+        if (sa == 0xFF || sb == 0xFF) {
             js_free(ctx, out); JS_FreeCString(ctx, str);
             return JS_ThrowTypeError(ctx, "Base64ToUint8Array: invalid character");
         }
-        // Padding chars: '=' yields -1 from decode table, which is < 0 — stop
         uint32_t triplet = ((uint32_t)sa << 18) | ((uint32_t)sb << 12);
-        if (sc >= 0) triplet |= ((uint32_t)sc << 6);
-        if (sd >= 0) triplet |= (uint32_t)sd;
-        if (j < outLen) out[j++] = (triplet >> 16) & 0xFF;
-        if (j < outLen && sc >= 0) out[j++] = (triplet >> 8) & 0xFF;
-        if (j < outLen && sd >= 0) out[j++] = triplet & 0xFF;
+        if (sc != 0xFF) triplet |= ((uint32_t)sc << 6);
+        if (sd != 0xFF) triplet |= (uint32_t)sd;
+        if (j < outLen) out[j++] = (uint8_t)(triplet >> 16);
+        if (j < outLen && sc != 0xFF) out[j++] = (uint8_t)(triplet >> 8);
+        if (j < outLen && sd != 0xFF) out[j++] = (uint8_t)triplet;
     }
 
     JS_FreeCString(ctx, str);
@@ -544,44 +546,14 @@ QuickJSWrapper::QuickJSWrapper(JNIEnv *env, jobject thiz, JSRuntime *rt)
         loadExtendLibraries(context);
 
         // Inject base64 helpers
-        // Encode stays in C for performance; decode is JS (avoids MinGW cross-compile issues)
         {
             JSValue g = JS_GetGlobalObject(context);
             JS_SetPropertyStr(context, g, "Uint8ArrayToBase64",
                 JS_NewCFunction(context, js_uint8ArrayToBase64, "Uint8ArrayToBase64", 1));
+            JS_SetPropertyStr(context, g, "Base64ToUint8Array",
+                JS_NewCFunction(context, js_base64ToUint8Array, "Base64ToUint8Array", 1));
             JS_FreeValue(context, g);
         }
-        // Decode implemented in JS to avoid MinGW cross-compilation type aliasing issues
-        JS_FreeValue(context, JS_Eval(context, R"(
-(function(){
-const _t = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-const _d = new Int8Array(256).fill(-1);
-for (var i = 0; i < 64; i++) _d[_t.charCodeAt(i)] = i;
-globalThis.Base64ToUint8Array = function(str) {
-    var len = str.length;
-    if (len === 0 || len % 4 !== 0) throw new Error("invalid length");
-    var pad = 0;
-    while (pad < 2 && len > pad && str[len - 1 - pad] === '=') pad++;
-    var outLen = (len / 4) * 3 - pad;
-    var out = new Uint8Array(outLen);
-    var j = 0;
-    for (var i = 0; i < len; i += 4) {
-        if (str[i] === '=') break;
-        var sa = _d[str.charCodeAt(i)];
-        var sb = _d[str.charCodeAt(i + 1)];
-        var sc = _d[str.charCodeAt(i + 2)];
-        var sd = _d[str.charCodeAt(i + 3)];
-        if (sa < 0 || sb < 0) throw new Error("invalid character");
-        var triplet = (sa << 18) | (sb << 12);
-        if (sc >= 0) triplet |= (sc << 6);
-        if (sd >= 0) triplet |= sd;
-        if (j < outLen) out[j++] = (triplet >> 16) & 0xFF;
-        if (j < outLen && sc >= 0) out[j++] = (triplet >> 8) & 0xFF;
-        if (j < outLen && sd >= 0) out[j++] = triplet & 0xFF;
-    }
-    return out.buffer;
-};
-})())", "base64-js.js", JS_EVAL_TYPE_GLOBAL));
 
     const char *getOwnPropertyNames = "Object.getOwnPropertyNames";
     ownPropertyNames = JS_Eval(context, getOwnPropertyNames, strlen(getOwnPropertyNames), getOwnPropertyNames, JS_EVAL_TYPE_GLOBAL);
