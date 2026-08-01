@@ -457,13 +457,15 @@ jsModuleLoaderFunc(JSContext *ctx, const char *module_name, void *opaque)
 static bool throwIfUnhandledRejections(QuickJSWrapper *wrapper, JSContext *ctx)
 {
     string error;
-    while (!wrapper->unhandledRejections.empty())
+    auto &q = wrapper->unhandledRejections;
+    while (!q.empty())
     {
-        JSValueConst reason = wrapper->unhandledRejections.front();
-        error += QuickJSWrapper::getJSErrorStr(ctx, reason);
+        RejectionEntry e = q.front();
+        q.pop();
+        error += QuickJSWrapper::getJSErrorStr(ctx, e.reason);
         error += "\n";
-        JS_FreeValue(ctx, reason);
-        wrapper->unhandledRejections.pop();
+        JS_FreeValue(ctx, e.promise);
+        JS_FreeValue(ctx, e.reason);
     }
 
     bool is_error = !error.empty();
@@ -475,6 +477,15 @@ static bool throwIfUnhandledRejections(QuickJSWrapper *wrapper, JSContext *ctx)
     return is_error;
 }
 
+/**
+ * Runs all pending jobs. When a job throws, the exception is captured and cleared,
+ * and the loop KEEPS RUNNING so that promise rejection handlers attached by JS
+ * (e.g. .then(null, onRejected) fallbacks) still get a chance to execute and
+ * report the error through the JS error channel with full context.
+ *
+ * The FIRST job error is rethrown at the end; if no job error occurred, remaining
+ * unhandled rejections are thrown.
+ */
 static bool executePendingJobLoop(JNIEnv *env, JSRuntime *rt, JSContext *ctx)
 {
     if (env->ExceptionCheck())
@@ -484,25 +495,42 @@ static bool executePendingJobLoop(JNIEnv *env, JSRuntime *rt, JSContext *ctx)
 
     JSContext *ctx1;
     bool success = true;
+    string jobError;
     int err;
     /* execute the pending jobs */
     for (;;)
     {
         err = JS_ExecutePendingJob(rt, &ctx1);
-        if (err <= 0)
+        if (err == 0)
         {
-            if (err < 0)
-            {
-                success = false;
-                string error = QuickJSWrapper::getJSErrorStr(ctx);
-                QuickJSWrapper::throwJSException(env, error.c_str());
-            }
-            break;
+            break; // no more jobs
         }
+        if (err < 0)
+        {
+            // A job threw. Capture the first error, clear the exception, and
+            // keep processing the remaining jobs.
+            if (jobError.empty())
+            {
+                jobError = QuickJSWrapper::getJSErrorStr(ctx);
+            }
+            else
+            {
+                QuickJSWrapper::getJSErrorStr(ctx); // clear, keep the first error
+            }
+            success = false;
+            continue;
+        }
+        /* err > 0: one job executed */
     }
 
     if (success && throwIfUnhandledRejections(reinterpret_cast<QuickJSWrapper *>(JS_GetRuntimeOpaque(rt)), ctx))
     {
+        success = false;
+    }
+
+    if (!jobError.empty())
+    {
+        QuickJSWrapper::throwJSException(env, jobError.c_str());
         success = false;
     }
 
@@ -512,19 +540,36 @@ static bool executePendingJobLoop(JNIEnv *env, JSRuntime *rt, JSContext *ctx)
 static void promiseRejectionTracker(JSContext *ctx, JSValueConst promise,
                                     JSValueConst reason, BOOL is_handled, void *opaque)
 {
-    auto unhandledRejections = static_cast<queue<JSValue> *>(opaque);
+    auto unhandledRejections = static_cast<queue<RejectionEntry> *>(opaque);
     if (!is_handled)
     {
-        unhandledRejections->push(JS_DupValue(ctx, reason));
+        unhandledRejections->push(RejectionEntry{JS_DupValue(ctx, promise), JS_DupValue(ctx, reason)});
+        return;
     }
-    else
+
+    // handled: remove ONLY the entry that belongs to THIS promise (identity match).
+    // Previously the queue front was popped unconditionally, which mis-pairs when
+    // several promises reject (an unrelated entry could be dropped and a still
+    // unhandled rejection could be lost or falsely reported).
+    queue<RejectionEntry> kept;
+    while (!unhandledRejections->empty())
     {
-        if (!unhandledRejections->empty())
+        RejectionEntry e = unhandledRejections->front();
+        unhandledRejections->pop();
+        if (JS_IsStrictEqual(ctx, e.promise, promise))
         {
-            JSValueConst rej = unhandledRejections->front();
-            JS_FreeValue(ctx, rej);
-            unhandledRejections->pop();
+            JS_FreeValue(ctx, e.promise);
+            JS_FreeValue(ctx, e.reason);
         }
+        else
+        {
+            kept.push(e);
+        }
+    }
+    while (!kept.empty())
+    {
+        unhandledRejections->push(kept.front());
+        kept.pop();
     }
 }
 

@@ -1,5 +1,16 @@
 # Change Log
 
+## 3.7.0 *(2026-08-01)*
+
+### Features
+- **Multi-server native loading** — `QuickJSNativeLoader` now copies a fresh **per-process unique file** into `%TEMP%/yeow-quickjs/` when the canonical extracted library is locked by another JVM (Windows loads DLLs exclusively). Multiple server processes can now run the Yeow runtime side by side on one machine; the same fallback applies to companion libs (`libwinpthread-1.dll` etc.).
+
+### Bug Fixes
+- **Promise rejection tracking mis-pairing** — the host rejection tracker now pairs the "handled" transition with its promise by **identity** (`JS_IsStrictEqual`) instead of unconditionally popping the queue front. Previously, when several promises rejected, the wrong entry could be dropped — losing a genuinely unhandled rejection or reporting a handled one.
+- **Job errors killed remaining microtasks** — `executePendingJobLoop` no longer aborts on the first job error: it captures the first error, clears the exception and keeps executing the remaining pending jobs so JS-side rejection handlers (e.g. `promise.then(null, onRejected)` fallbacks in the embedding code) still run and can report errors with their full context. The first job error is rethrown at the end; otherwise remaining unhandled rejections are thrown.
+
+---
+
 ## 3.6.15 *(2026-07-29)*
 
 ### Breaking Changes

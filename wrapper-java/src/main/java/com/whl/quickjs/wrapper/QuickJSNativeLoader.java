@@ -32,16 +32,15 @@ final class QuickJSNativeLoader {
             String dir = "native/" + platform + "/";
             String libName = mapLibName(platform);
             String resourcePath = dir + libName;
-            try (InputStream is = QuickJSNativeLoader.class.getClassLoader().getResourceAsStream(resourcePath)) {
-                if (is != null) {
-                    Path extractDir = Path.of(System.getProperty("java.io.tmpdir"), "yeow-quickjs");
-                    Files.createDirectories(extractDir);
+            try {
+                Path extractDir = Path.of(System.getProperty("java.io.tmpdir"), "yeow-quickjs");
+                Files.createDirectories(extractDir);
 
-                    Path libFile = extractDir.resolve(libName);
-                    Files.copy(is, libFile, StandardCopyOption.REPLACE_EXISTING);
-
+                Path libFile = extractLib(extractDir, libName, resourcePath);
+                if (libFile == null) {
+                    loadError = "Resource not found on classpath: " + resourcePath;
+                } else {
                     extractAndLoadDeps(platform, dir, extractDir);
-
                     try {
                         System.load(libFile.toAbsolutePath().toString());
                         loaded = true;
@@ -49,8 +48,6 @@ final class QuickJSNativeLoader {
                     } catch (UnsatisfiedLinkError e) {
                         loadError = "System.load(" + libFile + "): " + e.getMessage();
                     }
-                } else {
-                    loadError = "Resource not found on classpath: " + resourcePath;
                 }
             } catch (IOException e) {
                 loadError = "Extraction failed: " + e.getMessage();
@@ -65,6 +62,46 @@ final class QuickJSNativeLoader {
             (loadError != null ? "Cause: " + loadError + ". " : "") +
             "Make sure the native library is on java.library.path or bundled in the JAR."
         );
+    }
+
+    /**
+     * Extract a bundled native lib into {@code %TEMP%/yeow-quickjs/} and return the file to load.
+     *
+     * <p>Windows locks loaded DLLs: on a machine running multiple server processes (e.g. several
+     * Minecraft servers with the Yeow runtime), overwriting the canonical extracted file fails
+     * with {@code AccessDeniedException}. In that case the library is copied to a fresh
+     * <b>per-process unique file</b> in the same directory and loaded from there — so any number
+     * of JVMs can run side by side.</p>
+     *
+     * @return the file to load, or {@code null} if the resource does not exist
+     */
+    private static Path extractLib(Path extractDir, String libName, String resourcePath) throws IOException {
+        Path canonical = extractDir.resolve(libName);
+        InputStream is = QuickJSNativeLoader.class.getClassLoader().getResourceAsStream(resourcePath);
+        if (is == null) return null;
+        try {
+            Files.copy(is, canonical, StandardCopyOption.REPLACE_EXISTING);
+            return canonical;
+        } catch (IOException e) {
+            // Canonical file is locked by another JVM — copy a unique per-process file instead.
+            Path unique = extractDir.resolve(uniqueLibName(libName));
+            try (InputStream again = QuickJSNativeLoader.class.getClassLoader().getResourceAsStream(resourcePath)) {
+                if (again == null) return canonical;
+                Files.copy(again, unique, StandardCopyOption.REPLACE_EXISTING);
+            }
+            return unique;
+        } finally {
+            is.close();
+        }
+    }
+
+    /** <name>-<pid>-<nano>.<ext> — never collides with the canonical file or other processes. */
+    private static String uniqueLibName(String libName) {
+        int dot = libName.lastIndexOf('.');
+        String stem = dot > 0 ? libName.substring(0, dot) : libName;
+        String ext = dot > 0 ? libName.substring(dot) : "";
+        long pid = ProcessHandle.current().pid();
+        return stem + "-" + pid + "-" + Long.toHexString(System.nanoTime()) + ext;
     }
 
     /**
@@ -86,13 +123,8 @@ final class QuickJSNativeLoader {
 
         for (String dep : deps) {
             try {
-                InputStream dis = QuickJSNativeLoader.class.getClassLoader().getResourceAsStream(dir + dep);
-                if (dis == null) continue;
-
-                Path depFile = extractDir.resolve(dep);
-                Files.copy(dis, depFile, StandardCopyOption.REPLACE_EXISTING);
-                dis.close();
-
+                Path depFile = extractLib(extractDir, dep, dir + dep);
+                if (depFile == null) continue;
                 System.load(depFile.toAbsolutePath().toString());
             } catch (Exception ignored) {}
         }

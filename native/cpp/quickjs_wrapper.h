@@ -15,6 +15,17 @@ using namespace std;
 #include <jni.h>
 #include <map>
 
+/**
+ * A tracked unhandled-rejection entry. Stores BOTH the promise and its reason so
+ * that the "handled" transition can be paired by promise identity instead of
+ * blindly popping the queue front (which mis-pairs when multiple promises reject).
+ */
+struct RejectionEntry
+{
+    JSValue promise;
+    JSValue reason;
+};
+
 class QuickJSWrapper
 {
 private:
@@ -33,7 +44,7 @@ public:
     JSRuntime *runtime;
     JSContext *context;
 
-    queue<JSValueConst> unhandledRejections;
+    queue<RejectionEntry> unhandledRejections;
 
     jclass objectClass;
     jclass booleanClass;
