@@ -556,7 +556,7 @@ static void promiseRejectionTracker(JSContext *ctx, JSValueConst promise,
     {
         RejectionEntry e = unhandledRejections->front();
         unhandledRejections->pop();
-        if (JS_IsStrictEqual(ctx, e.promise, promise))
+        if (JS_StrictEq(ctx, e.promise, promise))
         {
             JS_FreeValue(ctx, e.promise);
             JS_FreeValue(ctx, e.reason);
